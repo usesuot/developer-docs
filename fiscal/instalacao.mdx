@@ -1,0 +1,147 @@
+---
+title: "Instalar o SUOT Fiscal SDK no seu projeto PHP"
+sidebarTitle: "Instalação"
+description: "Adicione o SUOT Fiscal SDK ao seu projeto via Composer: configure o registry privado, instale os pacotes necessários e verifique os requisitos de ambiente."
+---
+
+O SUOT Fiscal SDK é distribuído exclusivamente pelo registry privado **packages.suot.dev** e requer autenticação com um token Composer vinculado à sua licença SUOT. O processo de instalação é padrão Composer, com um único passo adicional de configuração do repositório. Este guia cobre tudo que você precisa para ter o SDK funcionando em um projeto PHP do zero.
+
+## Pré-requisitos
+
+Certifique-se de que o seu ambiente atende aos requisitos abaixo antes de iniciar a instalação:
+
+- **PHP 8.4** ou superior — verifique com `php -v`
+- **Composer 2** — verifique com `composer -V` (Composer 1 não é suportado)
+- **Token Composer SUOT** — gere o seu no painel em [developers.suot.dev](/platform/tokens-composer)
+- **Licença SUOT ativa** — necessária para autenticar o acesso ao registry; gerencie suas licenças em [developers.suot.dev](/platform/licencas)
+
+<Note>
+  As extensões PHP `openssl`, `soap`, `curl`, `mbstring` e `dom` são necessárias em tempo de execução. A maioria dos ambientes de produção e desenvolvimento já as inclui por padrão.
+</Note>
+
+## Instalação passo a passo
+
+<Steps>
+  <Step title="Configure o registry privado">
+    Adicione o repositório privado da SUOT ao `composer.json` do seu projeto. Se o arquivo ainda não existir, crie-o na raiz do projeto.
+
+    ```json composer.json
+    {
+      "repositories": [
+        {
+          "type": "composer",
+          "url": "https://packages.suot.dev"
+        }
+      ]
+    }
+    ```
+
+    <Tip>
+      Você também pode adicionar o repositório via linha de comando: `composer config repositories.suot composer https://packages.suot.dev`
+    </Tip>
+  </Step>
+
+  <Step title="Autentique com seu token Composer">
+    Configure a autenticação com o token obtido em [developers.suot.dev](/platform/tokens-composer). A forma recomendada é via variável de ambiente, evitando que credenciais sejam gravadas em arquivos versionados.
+
+    ```bash
+    export COMPOSER_AUTH='{"http-basic":{"packages.suot.dev":{"username":"token","password":"SEU_TOKEN_SUOT_AQUI"}}}'
+    ```
+
+    <Warning>
+      Nunca comite credenciais no repositório. Substitua `SEU_TOKEN_SUOT_AQUI` pelo valor real apenas em ambientes seguros (CI/CD secrets, variáveis de ambiente do servidor). O arquivo `auth.json` local gerado pelo Composer também não deve ser versionado — adicione-o ao `.gitignore`.
+    </Warning>
+
+    Em pipelines de CI/CD, injete `COMPOSER_AUTH` como secret da plataforma (GitHub Actions, GitLab CI, etc.) em vez de armazená-lo em arquivos.
+  </Step>
+
+  <Step title="Instale os pacotes">
+    Instale os pacotes de acordo com os documentos fiscais que o seu projeto precisa emitir. O pacote `suot/fiscal-core` e `suot/fiscal-sefaz` são dependências base obrigatórias para qualquer combinação.
+
+    **Somente CT-e:**
+
+    ```bash
+    composer require suot/fiscal-core suot/fiscal-sefaz suot/fiscal-cte
+    ```
+
+    **Somente MDF-e:**
+
+    ```bash
+    composer require suot/fiscal-core suot/fiscal-sefaz suot/fiscal-mdfe
+    ```
+
+    **CT-e e MDF-e juntos:**
+
+    ```bash
+    composer require suot/fiscal-core suot/fiscal-sefaz suot/fiscal-cte suot/fiscal-mdfe
+    ```
+
+    O Composer resolverá as dependências e instalará os pacotes a partir do registry `packages.suot.dev`.
+
+    <Tip>
+      Em ambientes de produção, prefixe o comando com `--no-dev` e considere fixar versões explícitas (ex.: `suot/fiscal-cte:^1.0`) para garantir builds reproduzíveis. Veja mais sobre versionamento na seção abaixo.
+    </Tip>
+  </Step>
+
+  <Step title="Verifique a instalação">
+    Após a instalação, confirme que o autoload do Composer consegue resolver as classes do SDK com um pequeno script de verificação:
+
+    ```php verify.php
+    <?php
+
+    require_once __DIR__ . '/vendor/autoload.php';
+
+    use Suot\Fiscal\Core\ValueObjects\Cnpj;
+    use Suot\Fiscal\Sefaz\Environment;
+
+    echo 'SUOT Fiscal SDK instalado com sucesso.' . PHP_EOL;
+    echo 'Ambiente disponível: ' . Environment::Homologacao->value . PHP_EOL;
+    ```
+
+    Execute com:
+
+    ```bash
+    php verify.php
+    ```
+
+    Se a saída exibir a mensagem de sucesso sem erros de autoload, a instalação está correta.
+  </Step>
+</Steps>
+
+## Laravel Bridge
+
+Se o seu projeto usa **Laravel**, existe um pacote de integração dedicado que registra automaticamente o Service Provider, configura Facades e disponibiliza o arquivo `config/fiscal.php`:
+
+```bash
+composer require suot/fiscal-laravel
+```
+
+<Note>
+  O `suot/fiscal-laravel` depende dos demais pacotes fiscais. Instale-o em adição (não em substituição) aos pacotes de documento que você precisar. Consulte o guia completo em [Laravel Bridge](/fiscal/laravel-bridge).
+</Note>
+
+## Fixar versões em produção
+
+<Tip>
+  O SUOT Fiscal SDK está em **Early Access** e o versionamento semântico pode refletir mudanças de API entre versões menores durante este período. Para ambientes de produção, recomendamos fixar versões com o operador de compatibilidade (`^`) e revisar o changelog antes de atualizar.
+</Tip>
+
+Exemplo de restrição de versão no `composer.json`:
+
+```json composer.json
+{
+  "require": {
+    "suot/fiscal-core":   "^1.0",
+    "suot/fiscal-sefaz":  "^1.0",
+    "suot/fiscal-cte":    "^1.0"
+  }
+}
+```
+
+## Próximos passos
+
+Com os pacotes instalados, configure as credenciais do emitente, o certificado digital e o ambiente SEFAZ:
+
+- [Configuração](/fiscal/configuracao) — CNPJ, certificado A1 e autorizador SEFAZ
+- [Laravel Bridge](/fiscal/laravel-bridge) — configuração nativa para projetos Laravel
+- [Emitir CT-e](/fiscal/cte) — construa e transmita seu primeiro CT-e

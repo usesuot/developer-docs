@@ -1,0 +1,137 @@
+---
+title: "Atualizações dos SDKs SUOT — versionamento e upgrade"
+sidebarTitle: "Atualizações"
+description: "Saiba como acompanhar novas versões dos SDKs SUOT, fazer upgrade via Composer e o que acontece com versões instaladas quando a licença vence."
+---
+
+A SUOT publica atualizações dos SDKs com regularidade. Manter-se atualizado garante acesso a novos recursos, suporte aos schemas mais recentes do SEFAZ e da ANTT, correções de segurança e compatibilidade com as Notas Técnicas (NTs) vigentes. Esta página explica como acompanhar as novidades, realizar upgrades de forma segura e entender o comportamento dos pacotes instalados quando a licença expira.
+
+---
+
+## Acompanhar novidades
+
+O [Developer Portal](https://developers.suot.dev) é o ponto central para acompanhar o que há de novo nos SDKs SUOT. Lá você encontra o histórico de releases, o roadmap de funcionalidades e os avisos sobre Notas Técnicas do SEFAZ e da ANTT que impactam os pacotes.
+
+Além do portal, recomendamos acompanhar o arquivo `CHANGELOG.md` de cada pacote instalado. Ele detalha, por versão, as mudanças de comportamento, novos recursos, correções e breaking changes.
+
+<Tip>
+Use `composer show suot/fiscal-core` (ou o pacote equivalente) para verificar qual versão está instalada no seu ambiente e compará-la com a versão mais recente disponível no [packages.suot.dev](https://packages.suot.dev).
+</Tip>
+
+<Note>
+Pacotes marcados como **Early Access** ou **Em desenvolvimento** podem conter breaking changes entre minor versions durante o período de acesso antecipado. Leia o CHANGELOG com atenção antes de atualizar esses pacotes em produção.
+</Note>
+
+---
+
+## Fazer upgrade
+
+O processo de upgrade dos SDKs SUOT segue o fluxo padrão do Composer. Para atualizar pacotes específicos sem alterar outras dependências do projeto:
+
+```bash
+composer update suot/fiscal-core suot/fiscal-cte
+```
+
+Para o SUOT ANTT SDK:
+
+```bash
+composer update suot/antt-core suot/antt-ciot
+```
+
+Caso utilize o Laravel Bridge, inclua-o no comando:
+
+```bash
+composer update suot/fiscal-core suot/fiscal-cte suot/fiscal-laravel
+```
+
+<Warning>
+**Leia o CHANGELOG antes de atualizar em produção.** Versões major (`2.x → 3.x`) podem introduzir breaking changes nas interfaces de `Command`, `Handler` e `Result`. Versões minor e patch são geralmente retrocompatíveis, mas sempre valide em homologação primeiro.
+</Warning>
+
+<Tip>
+Para produção, fixe as versões no `composer.json` usando constraints conservadoras (ex: `^2.4`) e realize upgrades de forma explícita e planejada. Evite usar `*` ou `@latest` em ambientes críticos.
+
+```json
+{
+    "require": {
+        "suot/fiscal-core": "^2.4",
+        "suot/fiscal-cte": "^2.4",
+        "suot/fiscal-laravel": "^2.4"
+    }
+}
+```
+</Tip>
+
+O fluxo recomendado para upgrades em produção é:
+
+<Steps>
+  <Step title="Leia o CHANGELOG">
+    Revise o `CHANGELOG.md` do pacote para identificar breaking changes, deprecações e novos requisitos.
+  </Step>
+  <Step title="Atualize em ambiente de desenvolvimento">
+    Execute `composer update` localmente e ajuste o código para quaisquer breaking changes identificados.
+  </Step>
+  <Step title="Valide em homologação">
+    Execute seus testes e valide os fluxos principais (emissão, cancelamento, consulta) no ambiente de homologação do SEFAZ/ANTT.
+  </Step>
+  <Step title="Deploy em produção">
+    Após validação bem-sucedida em homologação, promova a atualização para produção seguindo seu processo de deploy habitual.
+  </Step>
+</Steps>
+
+---
+
+## Versões e licença
+
+O acesso às versões dos SDKs SUOT está vinculado a uma licença ativa para a sua organização.
+
+<CardGroup cols={2}>
+  <Card title="Licença ativa" icon="circle-check">
+    Com licença ativa, sua organização tem acesso a todas as versões publicadas — incluindo novas releases, patches de segurança e atualizações de schema.
+  </Card>
+  <Card title="Licença vencida" icon="circle-xmark">
+    Quando a licença vence, o acesso a **novas versões** é encerrado. Entretanto, os pacotes já instalados continuam funcionando normalmente.
+  </Card>
+</CardGroup>
+
+<Note>
+Não há kill switch nem forçamento de upgrade. Se sua licença vencer, seu software em produção **continua operando** com a versão instalada. O que deixa de ser possível é instalar ou atualizar para versões mais recentes até que a licença seja renovada.
+</Note>
+
+Para gerenciar licenças e renovações, acesse o [Developer Portal](https://developers.suot.dev).
+
+---
+
+## Schemas fiscais e regulatórios
+
+O SEFAZ e a ANTT publicam periodicamente **Notas Técnicas (NTs)** que alteram os schemas dos DFes (CT-e, MDF-e, etc.) ou as regras de validação dos sistemas. Essas mudanças geralmente têm prazo obrigatório de adoção.
+
+A SUOT acompanha as NTs publicadas e lança atualizações dos SDKs para suportar as novas versões de schema dentro do prazo. As atualizações relacionadas a NTs são destacadas no CHANGELOG e no Developer Portal.
+
+<Warning>
+Sempre verifique se há atualizações do SDK quando o SEFAZ ou a ANTT anunciar uma NT que afeta as operações do seu sistema (ex: nova versão de leiaute do CT-e). Emitir documentos em schema desatualizado pode resultar em rejeições após a data de obrigatoriedade da NT.
+</Warning>
+
+O processo recomendado ao identificar uma NT relevante:
+
+<Steps>
+  <Step title="Identifique o impacto">
+    Leia a NT publicada pelo SEFAZ ou ANTT e identifique quais operações e documentos são afetados.
+  </Step>
+  <Step title="Verifique o Developer Portal">
+    Acesse o [Developer Portal](https://developers.suot.dev) para confirmar se já há uma atualização do SDK que suporta a NT.
+  </Step>
+  <Step title="Atualize antes da obrigatoriedade">
+    Realize o upgrade e valide em homologação antes da data de vigência obrigatória da NT.
+  </Step>
+</Steps>
+
+<Info>
+O SEFAZ geralmente disponibiliza um período de coexistência de schemas (ambos aceitos) antes de tornar a nova versão obrigatória. Use esse período para migrar com tranquilidade.
+</Info>
+
+---
+
+## Roadmap
+
+Novos recursos, integrações planejadas e o status de funcionalidades em desenvolvimento estão disponíveis no [Developer Portal](https://developers.suot.dev). O roadmap é atualizado conforme as prioridades do produto e o calendário de NTs do SEFAZ e da ANTT.

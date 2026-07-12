@@ -1,0 +1,189 @@
+---
+title: "Usando os SDKs SUOT com IDEs e agentes de IA"
+sidebarTitle: "IDEs & IA"
+description: "Configure sua IDE e agentes de IA como GitHub Copilot e Claude Code para aproveitar o autocomplete e PHPDoc em pt-BR dos SDKs SUOT ao máximo."
+---
+
+Os SDKs SUOT foram projetados para entregar a melhor experiência de desenvolvimento possível tanto em IDEs modernas quanto com assistentes de IA — nenhum método mágico, tipos explícitos em todo lugar, argumentos nomeados e PHPDoc completo em pt-BR garantem que cada sugestão de autocomplete e cada resposta de um agente de IA seja precisa e contextualizada. *Da ordem ao resultado.*
+
+---
+
+## Por que os SDKs são "AI-ready"
+
+A arquitetura do SUOT SDK não foi pensada apenas para funcionar corretamente — foi pensada para ser **compreendida** por ferramentas de análise estática, IDEs e modelos de linguagem. Cada decisão de design contribui diretamente para a qualidade do autocomplete e das sugestões de IA:
+
+<CardGroup cols={2}>
+  <Card title="PHPStan nível máximo" icon="shield-check">
+    Todo tipo é explícito e verificado em tempo de análise. Nenhuma IDE ou IA precisa inferir — o shape de cada objeto está declarado com precisão.
+  </Card>
+  <Card title="Sem métodos mágicos" icon="ban">
+    Sem `__get`, `__set` ou `__call`. Toda propriedade e método é declarado explicitamente, permitindo introspecção completa pela IDE e pelo agente de IA.
+  </Card>
+  <Card title="Argumentos nomeados" icon="tag">
+    Toda chamada de método usa named arguments. O Copilot e o Claude sugerem cada argumento com seu nome e tipo correto, eliminando erros de posição.
+  </Card>
+  <Card title="PHPDoc em pt-BR" icon="book">
+    A documentação aparece diretamente no tooltip da IDE em português. Sem precisar abrir uma aba externa para entender o que cada parâmetro significa.
+  </Card>
+  <Card title="Enums tipados" icon="list">
+    Em vez de strings soltas, o SDK usa enums PHP 8.1+. A IA completa os casos do enum em vez de adivinhar um valor de string.
+  </Card>
+  <Card title="Value Objects" icon="cube">
+    `Cnpj`, `Chave`, `Rntrc` e outros Value Objects têm construtores explícitos. A IA sugere os argumentos corretos com validação embutida.
+  </Card>
+</CardGroup>
+
+---
+
+## Configurando o PHPStan
+
+O SUOT SDK é desenvolvido e testado com **PHPStan no nível 9 (máximo)**. Para obter o máximo de benefício na sua IDE e evitar que erros de tipo passem despercebidos, configure o PHPStan no mesmo nível no seu projeto:
+
+```yaml
+# phpstan.neon
+parameters:
+  level: 9
+  paths:
+    - src
+    - tests
+  checkMissingIterableValueType: true
+  checkGenericClassInNonGenericObjectType: true
+```
+
+```bash
+composer require --dev phpstan/phpstan
+vendor/bin/phpstan analyse
+```
+
+<Tip>
+  Execute o PHPStan como etapa obrigatória no seu pipeline de CI/CD. Como o SDK garante nível 9, qualquer violação de tipo na sua camada de integração será capturada antes do deploy.
+</Tip>
+
+---
+
+## IDEs recomendadas
+
+Nenhum plugin especial é necessário para aproveitar o autocomplete dos SDKs SUOT. Os tipos explícitos, enums e PHPDoc funcionam nativamente em qualquer IDE com suporte a PHP moderno.
+
+<CardGroup cols={2}>
+  <Card title="PhpStorm" icon="p">
+    IDE de referência para PHP. Lê PHPDoc, enums e types nativamente. O Step Builder do SDK é totalmente navegável com `Ctrl+Click`. Nenhuma configuração adicional necessária.
+  </Card>
+  <Card title="VS Code + Intelephense" icon="code">
+    Instale a extensão **PHP Intelephense** (bmewburn.vscode-intelephense). Suporte completo a PHP 8.3+, enums, named arguments e PHPDoc. Gratuito para uso básico.
+  </Card>
+  <Card title="Cursor" icon="mouse-pointer">
+    IDE baseada em VS Code com IA integrada. Aproveita os tipos explícitos do SDK para gerar código correto inline. Use com Intelephense para máxima precisão de autocomplete.
+  </Card>
+  <Card title="Zed" icon="zap">
+    Editor de alta performance com suporte nativo a LSP para PHP. Configure o PHP Language Server (phpactor ou intelephense) para obter autocomplete e navegação de tipos.
+  </Card>
+</CardGroup>
+
+<Info>
+  Certifique-se de que sua IDE está usando o PHP 8.3+ configurado no seu projeto. Enums, fibers e outros recursos modernos usados pelo SDK requerem que o language server aponte para o binário correto.
+</Info>
+
+---
+
+## Agentes de IA
+
+Os SDKs SUOT foram projetados para que agentes de IA gerem código correto na primeira tentativa — sem necessidade de correções manuais de tipo ou consulta a documentação externa.
+
+### GitHub Copilot
+
+O Copilot funciona diretamente com PHP tipado sem configuração adicional. Com o SDK instalado e indexado no workspace, o Copilot:
+
+- Completa os casos de enum (`ModalidadeFrete::`, `TipoServico::`) corretamente.
+- Sugere os named arguments na ordem e com o tipo esperado pelo Step Builder.
+- Reconhece Value Objects e sugere `new Cnpj(value: '...')` em vez de uma string solta.
+
+### Claude Code / Cursor
+
+Beneficiam-se especialmente da arquitetura CQRS do SDK. Quando o agente tem acesso ao código do projeto:
+
+- Identifica qual `Command` usar para cada operação (ex.: `EmitirCTeCommand`, `RegistrarCiotCommand`).
+- Infere quais campos são obrigatórios vs. opcionais pelo construtor do Command.
+- Gera o handler correto com base nos tipos de `Result` esperados.
+
+### Windsurf / Outros agentes LSP-aware
+
+Qualquer agente que consuma o Language Server Protocol (LSP) se beneficia automaticamente dos tipos explícitos. Nenhuma configuração adicional é necessária além de ter o SDK instalado via Composer e o PHP LSP ativo.
+
+<Tip>
+  Ao pedir a um agente de IA que gere código usando os SDKs SUOT, mencione explicitamente o padrão arquitetural para obter resultados mais precisos:
+
+  > "Estou usando o SUOT SDK com o padrão CQRS (Command / Handler / Result), Value Objects com named arguments e enums tipados. Gere o código seguindo esse padrão."
+
+  Isso ajuda o modelo a escolher a estrutura correta mesmo sem ter indexado toda a documentação do SDK.
+</Tip>
+
+---
+
+## Exemplo de fluxo com IA
+
+Veja como um ciclo típico de desenvolvimento assistido por IA funciona com o SUOT SDK:
+
+<Steps>
+  <Step title="Peça ao agente o Command">
+    Solicite ao seu assistente de IA:
+
+    > "Crie um `EmitirCTeCommand` usando named arguments com os campos obrigatórios para um CT-e modal rodoviário."
+
+    Como todos os campos do Command têm tipos explícitos e PHPDoc em pt-BR, a IA gera um scaffold correto sem inventar campos ou tipos.
+
+    ```php
+    // Gerado pelo agente — tipos corretos na primeira tentativa
+    $command = new EmitirCTeCommand(
+        chave:      new Chave(value: '35240100000000000191570010000000011000000015'),
+        emitente:   new Emitente(cnpj: new Cnpj(value: '00000000000191')),
+        tomador:    new Tomador(cnpj: new Cnpj(value: '99999999000199')),
+        modal:      Modal::Rodoviario,
+        natureza:   NaturezaOperacao::PrestacaoServico,
+        valorTotal: new Dinheiro(centavos: 150000),
+    );
+    ```
+  </Step>
+  <Step title="Execute o Handler">
+    Peça ao agente para completar o fluxo com o handler:
+
+    > "Agora injete o `EmitirCTeHandler` e trate o `Result`."
+
+    ```php
+    $result = $handler->handle(command: $command);
+
+    if ($result->isAutorizado()) {
+        $xml   = $result->xmlAutorizado();
+        $chave = $result->chaveAcesso();
+        // armazenar XML, emitir DACTE, etc.
+    } else {
+        // tratar rejeição com cStat e xMotivo
+    }
+    ```
+  </Step>
+  <Step title="Refine com PHPStan">
+    Rode o PHPStan para confirmar que o código gerado está correto:
+
+    ```bash
+    vendor/bin/phpstan analyse src/
+    ```
+
+    Como o SDK opera no nível 9, qualquer tipo incorreto sugerido pela IA é capturado imediatamente, antes mesmo de executar o código.
+  </Step>
+</Steps>
+
+---
+
+## MCP server para consulta de documentação
+
+Se você utiliza agentes compatíveis com o **Model Context Protocol (MCP)**, pode conectar a documentação do SUOT SDK diretamente ao seu agente para que ele responda perguntas sobre a API sem precisar de busca externa.
+
+O [Mintlify MCP](https://mcp.mintlify.com) permite que agentes como Claude e Cursor consultem documentação Mintlify em tempo real via protocolo MCP. Configure o servidor MCP apontando para a documentação do SUOT para que seu agente:
+
+- Encontre o Command correto para cada operação sem sair da IDE.
+- Consulte exemplos de código diretamente nos tooltips do agente.
+- Responda perguntas sobre enums, Value Objects e configuração com base na documentação oficial.
+
+<Info>
+  A integração MCP não requer configuração especial nos SDKs SUOT — é uma camada de consulta à documentação, não ao código em si. Consulte a documentação do Mintlify MCP em [mcp.mintlify.com](https://mcp.mintlify.com) para instruções de configuração por agente.
+</Info>

@@ -1,0 +1,89 @@
+---
+title: "Configurar o SUOT ANTT SDK — credenciais e ambiente"
+sidebarTitle: "Configuração"
+description: "Configure o SUOT ANTT SDK com CNPJ do transportador, credenciais de acesso à ANTT e ambiente de homologação ou produção em PHP puro."
+---
+
+O SUOT ANTT SDK é framework-agnóstico: a configuração é feita diretamente em PHP, sem depender de arquivos `.env`, containers de DI ou qualquer convenção de framework. Você instancia `AnttConfig` com as credenciais do transportador e o ambiente desejado, e passa esse objeto para os handlers das operações.
+
+## O que você precisa configurar
+
+Antes de instanciar o SDK, tenha em mãos:
+
+- **CNPJ do transportador** — CNPJ da empresa habilitada junto à ANTT
+- **Credenciais de acesso à ANTT** — usuário e senha (ou token) da conta ANTT do transportador, conforme exigido pela operação
+- **Ambiente** — `homologacao` para testes ou `producao` para operações reais
+
+## Configuração básica
+
+```php
+<?php
+
+use Suot\Antt\Core\Config\AnttConfig;
+use Suot\Antt\Core\Config\AnttEnvironment;
+use Suot\Antt\Core\ValueObject\Cnpj;
+
+$config = new AnttConfig(
+    cnpj: new Cnpj('00.000.000/0001-00'),
+    usuario: 'usuario-antt-placeholder',
+    senha: 'senha-antt-placeholder',
+    environment: AnttEnvironment::Homologacao,
+);
+```
+
+Substitua os valores de placeholder pelos dados reais do transportador antes de executar em produção.
+
+<Note>
+  Nunca versione credenciais reais no repositório. Em aplicações PHP puras, leia os valores a partir de variáveis de ambiente (`getenv()`) ou de um arquivo `.env` não versionado.
+</Note>
+
+## Lendo credenciais de variáveis de ambiente
+
+O padrão recomendado para aplicações sem framework é ler as credenciais de variáveis de ambiente:
+
+```php
+<?php
+
+use Suot\Antt\Core\Config\AnttConfig;
+use Suot\Antt\Core\Config\AnttEnvironment;
+use Suot\Antt\Core\ValueObject\Cnpj;
+
+$environment = match (getenv('SUOT_ANTT_ENV')) {
+    'producao'     => AnttEnvironment::Producao,
+    default        => AnttEnvironment::Homologacao,
+};
+
+$config = new AnttConfig(
+    cnpj: new Cnpj((string) getenv('SUOT_ANTT_CNPJ')),
+    usuario: (string) getenv('SUOT_ANTT_USUARIO'),
+    senha: (string) getenv('SUOT_ANTT_SENHA'),
+    environment: $environment,
+);
+```
+
+## Ambientes
+
+O SDK suporta dois ambientes de execução:
+
+| Ambiente | Constante | Descrição |
+|---|---|---|
+| Homologação | `AnttEnvironment::Homologacao` | Sandbox da ANTT para testes; operações não geram efeitos reais |
+| Produção | `AnttEnvironment::Producao` | Ambiente real; registros têm validade jurídica |
+
+<Info>
+  Sempre desenvolva e teste no ambiente de **homologação** antes de apontar para produção. Registros realizados em produção — como CIOTs emitidos — têm efeito imediato e podem implicar obrigações legais. Consulte o [guia de homologação](/guias/homologacao) para instruções detalhadas.
+</Info>
+
+## Passando a configuração para os handlers
+
+O objeto `AnttConfig` é passado diretamente para o handler de cada operação:
+
+```php
+<?php
+
+use Suot\Antt\Ciot\Handler\CiotHandler;
+
+$handler = new CiotHandler(config: $config);
+```
+
+O handler não armazena estado entre chamadas. Você pode reutilizar a mesma instância para múltiplas operações dentro do mesmo ciclo de vida da aplicação.

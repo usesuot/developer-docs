@@ -1,0 +1,81 @@
+---
+title: "Licenças SUOT — acesso por organização aos SDKs"
+sidebarTitle: "Licenças"
+description: "Entenda como o modelo de licenciamento da SUOT funciona: a organização é titular, tokens são emitidos por membro, e o vencimento não desliga software em produção."
+---
+
+O modelo de licenciamento da SUOT foi desenhado para refletir a realidade de equipes de desenvolvimento: a empresa (organização) é a titular, os desenvolvedores individuais obtêm acesso por meio de tokens vinculados à licença da organização, e o software já instalado em produção não é afetado por vencimentos ou interrupções comerciais. Esta página detalha como esse modelo funciona na prática.
+
+## Modelo de licenciamento
+
+A unidade de licenciamento na SUOT é a **organização**, não o desenvolvedor individual. Quando sua empresa adquire acesso ao Fiscal SDK ou ao ANTT SDK, a licença é emitida e vinculada à organização cadastrada no [Developer Portal](https://developers.suot.dev).
+
+Isso significa que:
+
+- Um desenvolvedor que sai da empresa não leva a licença consigo
+- Adicionar ou remover membros da organização não afeta a licença em si
+- A renovação, o upgrade ou o cancelamento são negociados no nível da organização
+
+<Note>
+  A **organização é a titular da licença**. Cada membro pode emitir tokens Composer próprios que utilizam os privilégios da licença organizacional, mas nenhum membro individual detém a licença.
+</Note>
+
+## Licença vs. Assinatura
+
+Licença e assinatura são conceitos distintos no ecossistema SUOT:
+
+| Conceito | Definição |
+|----------|-----------|
+| **Assinatura** | Vínculo comercial entre a organização e a SUOT. Define o período de vigência, o suporte incluído e o acesso a novas versões dos SDKs. |
+| **Licença** | Acesso técnico concedido à organização para baixar pacotes do registry `packages.suot.dev` e utilizar os SDKs. É consequência de uma assinatura ativa. |
+
+Em termos práticos: a assinatura é o contrato; a licença é o que o Developer Portal verifica para liberar (ou não) o download de pacotes pelo token Composer.
+
+## O que a licença permite
+
+Com uma licença ativa associada à sua organização, os membros podem:
+
+- Baixar os pacotes do SDK licenciado a partir de `packages.suot.dev`
+- Receber novas versões e atualizações dos pacotes durante a vigência
+- Acessar os canais de suporte técnico da SUOT para o produto licenciado
+- Emitir tokens Composer com os privilégios de acesso correspondentes
+
+Cada licença cobre um produto específico — Fiscal SDK ou ANTT SDK. Para usar ambos, a organização precisa de licenças para os dois produtos.
+
+## Vencimento da licença
+
+Quando uma assinatura vence e não é renovada, o acesso técnico associado à licença é encerrado. É importante entender exatamente o que isso significa — e o que **não** significa.
+
+<Warning>
+  **O que acontece quando a licença vence:**
+
+  - O suporte técnico ao produto é encerrado
+  - O acesso a novas versões dos SDKs é suspenso — novos `composer require` e `composer update` para pacotes SUOT falharão na autenticação
+  - Os tokens Composer existentes deixam de autenticar requisições ao `packages.suot.dev`
+
+  **O que NÃO acontece:**
+
+  - O software já instalado em produção **continua funcionando normalmente**
+  - Não existe nenhum mecanismo de desativação remota (*kill switch*) nos SDKs
+  - O código PHP instalado via Composer não faz nenhuma verificação de licença em tempo de execução
+
+  A SUOT não tem como desligar software que já foi instalado no seu servidor. O vencimento afeta apenas a capacidade de obter novas versões e suporte — não a operação do software existente.
+</Warning>
+
+Em resumo: após o vencimento, sua aplicação continua rodando com a versão do SDK que estava instalada no momento do vencimento. O que você perde é a capacidade de atualizar para versões futuras e o direito ao suporte técnico.
+
+## Disponibilidade sujeita a licenciamento
+
+Alguns produtos ou funcionalidades do ecossistema SUOT podem estar em fase inicial de disponibilidade. Nesses casos, o acesso pode ser limitado a organizações participantes de programas específicos.
+
+<Info>
+  **Early Access** — Produtos marcados como Early Access estão disponíveis para um conjunto restrito de organizações. Entre em contato pelo [Developer Portal](https://developers.suot.dev) para expressar interesse.
+</Info>
+
+## Próximos passos
+
+Após confirmar que sua organização tem uma licença ativa, o próximo passo é emitir tokens Composer para os membros do time e para os pipelines de CI/CD.
+
+<Note>
+  Para gerar, usar e revogar tokens Composer, acesse [Tokens Composer](/platform/tokens-composer).
+</Note>

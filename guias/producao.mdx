@@ -1,0 +1,175 @@
+---
+title: "Checklist de produção — deploy do SUOT SDK em produção"
+sidebarTitle: "Produção"
+description: "Siga o checklist de deploy do SUOT SDK em produção: certificate management, variáveis de ambiente, monitoramento de rejeições e estratégia de retry."
+---
+
+Colocar uma integração fiscal ou regulatória em produção exige uma preparação cuidadosa. Diferente de outros contextos, erros em produção podem gerar documentos inválidos, multas, indisponibilidade operacional ou exposição de dados sensíveis. Este checklist cobre os pontos críticos que toda equipe deve validar antes do go-live — *da ordem ao resultado.*
+
+---
+
+## Checklist pré-produção
+
+Percorra cada item abaixo e marque somente quando tiver confirmação real, não por suposição.
+
+### Ambiente e credenciais
+
+- [ ] Ambiente definido como `producao` na configuração do SDK
+- [ ] Certificado digital A1 de produção válido configurado via variável de ambiente
+- [ ] CNPJ do emitente/transportador correto, ativo e habilitado para emissão
+- [ ] Tokens Composer de CI/CD gerados e armazenados como secrets (não em código)
+
+```php
+use Suot\Fiscal\Core\Config\FiscalConfig;
+use Suot\Fiscal\Core\Enum\Environment;
+
+$config = FiscalConfig::builder()
+    ->environment(Environment::Producao)
+    ->cnpj(cnpj: $_ENV['SUOT_FISCAL_CNPJ'])
+    ->certificate(
+        path:     $_ENV['SUOT_FISCAL_CERT_PATH'],
+        password: $_ENV['SUOT_FISCAL_CERT_PASSWORD'],
+    )
+    ->build();
+```
+
+```ini
+# .env (produção — nunca commitar este arquivo)
+SUOT_FISCAL_ENV=producao
+SUOT_FISCAL_CNPJ=00000000000191
+SUOT_FISCAL_CERT_PATH=/run/secrets/certificado.pfx
+SUOT_FISCAL_CERT_PASSWORD=senha_muito_segura
+```
+
+### Testes
+
+- [ ] Todos os fluxos críticos testados e aprovados em homologação
+- [ ] Testes de rejeição esperada (`cStat`) cobertos por testes automatizados
+- [ ] `InfrastructureException` capturada e tratada em todos os pontos de entrada
+- [ ] Retry Policy configurada e validada para falhas transitórias de rede
+
+### Segurança
+
+- [ ] `auth.json` listado no `.gitignore`
+- [ ] Certificado digital (`.pfx` / `.p12`) **não commitado** no repositório
+- [ ] Senha do certificado definida exclusivamente em variável de ambiente — nunca hardcoded
+- [ ] Tokens Composer não aparecem em logs de aplicação, CI/CD ou rastreamento de erros
+
+<Warning>
+  **Nunca armazene o certificado digital ou sua senha no controle de versão.** O certificado A1 é equivalente à assinatura jurídica da empresa emissora. Caso seja exposto, qualquer pessoa com acesso pode emitir documentos fiscais em nome do CNPJ. Adicione `*.pfx`, `*.p12` e `auth.json` ao seu `.gitignore` imediatamente.
+
+  ```bash
+  # .gitignore
+  auth.json
+  *.pfx
+  *.p12
+  .env
+  .env.production
+  ```
+</Warning>
+
+### Monitoramento
+
+- [ ] Logging de rejeições (`cStat` + `xMotivo`) implementado e centralizado
+- [ ] Alertas configurados para `InfrastructureException` (falhas de webservice)
+- [ ] Storage de XMLs autorizados implementado com retenção adequada (mínimo 5 anos para CT-e)
+- [ ] Dashboard ou relatório de rejeições disponível para a equipe operacional
+
+---
+
+## Rotação de certificados digitais
+
+Certificados digitais A1 possuem validade de **1 ano** (ou conforme emitido pela AC). Quando o certificado expira, **todos os envios passam a ser rejeitados** pela SEFAZ e pela ANTT imediatamente.
+
+<Steps>
+  <Step title="Monitore a data de expiração">
+    Acompanhe a data de validade do certificado em uso. Programe alertas com pelo menos **60 dias de antecedência** para que haja tempo hábil de emissão e homologação do novo certificado.
+  </Step>
+  <Step title="Adquira o novo certificado em homologação primeiro">
+    Antes de substituir o certificado em produção, configure o novo certificado no ambiente de homologação e execute o checklist completo de testes para confirmar que ele é aceito pela SEFAZ e pela ANTT.
+  </Step>
+  <Step title="Atualize as variáveis de ambiente">
+    Substitua o arquivo do certificado e atualize `SUOT_FISCAL_CERT_PATH` e `SUOT_FISCAL_CERT_PASSWORD` (se a senha mudou) nas variáveis de ambiente de produção. Não modifique o código-fonte.
+
+    ```bash
+    # Exemplo com secrets gerenciados (ex.: AWS Secrets Manager, Vault, etc.)
+    # Atualize o secret sem tocar no código da aplicação
+    SUOT_FISCAL_CERT_PATH=/run/secrets/certificado_novo.pfx
+    SUOT_FISCAL_CERT_PASSWORD=nova_senha_segura
+    ```
+  </Step>
+  <Step title="Reinicie a aplicação e valide">
+    Após a atualização, reinicie os workers/processos que carregam a configuração do SDK e emita um documento de teste em produção (ex.: uma NF-e de valor mínimo ou CT-e de teste com sua própria empresa) para confirmar que o novo certificado está funcionando corretamente.
+  </Step>
+  <Step title="Revogue o certificado antigo">
+    Após confirmar que o novo certificado está operacional, solicite a revogação do certificado anterior junto à Autoridade Certificadora emissora e elimine o arquivo `.pfx` do servidor com segurança.
+  </Step>
+</Steps>
+
+<Info>
+  O SUOT SDK carrega o certificado a cada instância de `FiscalConfig` ou `AnttConfig`. Em arquiteturas com múltiplos workers, todos devem ser reiniciados após a troca do certificado para garantir que nenhum processo continue usando o arquivo antigo.
+</Info>
+
+---
+
+## Monitoramento de rejeições
+
+A SEFAZ e a ANTT retornam um código de status (`cStat`) e uma descrição (`xMotivo`) em todas as respostas. Em produção, rejeições devem ser tratadas como eventos de primeira classe — não apenas como erros de log.
+
+### Padrão recomendado
+
+```php
+use Suot\Fiscal\Cte\Handler\EmitirCTeHandler;
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\EmitirCTeResult;
+use Psr\Log\LoggerInterface;
+
+final class EmitirCTeService
+{
+    public function __construct(
+        private readonly EmitirCTeHandler $handler,
+        private readonly LoggerInterface  $logger,
+    ) {}
+
+    public function emitir(EmitirCTeCommand $command): EmitirCTeResult
+    {
+        try {
+            $result = $this->handler->handle(command: $command);
+
+            if (! $result->isAutorizado()) {
+                $this->logger->warning('CT-e rejeitado', [
+                    'cStat'   => $result->cStat(),
+                    'xMotivo' => $result->xMotivo(),
+                    'chave'   => $command->chave()->value(),
+                ]);
+            }
+
+            return $result;
+        } catch (InfrastructureException $e) {
+            $this->logger->critical('Falha de infraestrutura SEFAZ', [
+                'message' => $e->getMessage(),
+                'chave'   => $command->chave()->value(),
+            ]);
+
+            throw $e;
+        }
+    }
+}
+```
+
+### Categorias de `cStat` para monitorar
+
+| Categoria | Exemplos de `cStat` | Ação recomendada |
+|---|---|---|
+| **Autorizado** | 100 | Armazenar XML, prosseguir fluxo |
+| **Rejeição de negócio** | 2xx, 3xx, 4xx | Logar, notificar equipe operacional |
+| **Serviço indisponível** | 108, 109 | Acionar Retry Policy, alertar monitoramento |
+| **Erro de schema** | 5xx | Logar como erro de desenvolvimento, corrigir payload |
+
+<Tip>
+  Crie um painel de monitoramento que agrupe rejeições por `cStat`. Picos em um código específico geralmente indicam uma mudança de regra de negócio (ex.: nova versão de leiaute da SEFAZ) que exige atualização do SDK ou dos dados enviados.
+</Tip>
+
+---
+
+Revise também o [Guia de homologação](/guias/homologacao) para garantir que todos os cenários foram testados antes do go-live.

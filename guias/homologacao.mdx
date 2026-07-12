@@ -1,0 +1,176 @@
+---
+title: "Guia de homologação — testando com o SUOT SDK antes da produção"
+sidebarTitle: "Homologação"
+description: "Configure o ambiente de homologação dos SDKs SUOT para testar CT-e, MDF-e, CIOT e RNTRC contra ambientes de teste antes de ir para produção."
+---
+
+Antes de emitir qualquer documento fiscal ou registrar operações junto à ANTT em produção, a etapa de **homologação é obrigatória**. Tanto a SEFAZ quanto a ANTT disponibilizam ambientes de teste dedicados, e o SUOT SDK oferece suporte nativo a ambos — basta uma linha de configuração para alternar entre os ambientes. *Da ordem ao resultado.*
+
+## O que é homologação
+
+No contexto tributário e regulatório brasileiro, **homologação** é o ambiente de testes oficial mantido pelos órgãos competentes (SEFAZ estadual, SEFAZ Nacional, ANTT) onde é possível enviar documentos e requisições com o mesmo protocolo técnico da produção, porém sem validade jurídica ou fiscal.
+
+Documentos emitidos em homologação:
+
+- **Não têm validade legal** — não geram obrigações fiscais nem comprovam operações de transporte.
+- **Não podem ser utilizados** como CT-e, MDF-e ou CIOT reais.
+- São processados pelas mesmas regras de validação do ambiente de produção, tornando o teste fiel ao comportamento real.
+
+O objetivo da homologação é garantir que sua integração esteja correta — credenciais, assinatura digital, layout dos documentos e tratamento de erros — antes de qualquer operação real.
+
+---
+
+## Configurando o Fiscal SDK em homologação
+
+O Fiscal SDK expõe o enum `Environment` para selecionar o ambiente. Passe `Environment::Homologacao` ao construir a configuração:
+
+```php
+use Suot\Fiscal\Core\Config\FiscalConfig;
+use Suot\Fiscal\Core\Enum\Environment;
+
+$config = FiscalConfig::builder()
+    ->environment(Environment::Homologacao)
+    ->cnpj(cnpj: '00000000000191')
+    ->certificate(path: '/certs/certificado.pfx', password: $_ENV['CERT_PASSWORD'])
+    ->build();
+```
+
+### No Laravel
+
+Publique o arquivo de configuração e defina as variáveis de ambiente no `.env`:
+
+```bash
+php artisan vendor:publish --provider="Suot\Fiscal\Laravel\FiscalServiceProvider"
+```
+
+```ini
+# .env
+SUOT_FISCAL_ENV=homologacao
+SUOT_FISCAL_CNPJ=00000000000191
+SUOT_FISCAL_CERT_PATH=/certs/certificado.pfx
+SUOT_FISCAL_CERT_PASSWORD=senha_segura
+```
+
+<Info>
+  Em homologação, utilize um **certificado digital A1 real** e o **CNPJ real do emitente**. A SEFAZ valida a assinatura e a titularidade do certificado mesmo no ambiente de teste — usar dados fictícios resultará em rejeição.
+</Info>
+
+---
+
+## Configurando o ANTT SDK em homologação
+
+O padrão é idêntico ao Fiscal SDK. O `AnttConfig` aceita o mesmo enum `Environment`:
+
+```php
+use Suot\Antt\Core\Config\AnttConfig;
+use Suot\Antt\Core\Enum\Environment;
+
+$config = AnttConfig::builder()
+    ->environment(Environment::Homologacao)
+    ->cnpj(cnpj: '00000000000191')
+    ->certificate(path: '/certs/certificado.pfx', password: $_ENV['CERT_PASSWORD'])
+    ->build();
+```
+
+### No Laravel
+
+```ini
+# .env
+SUOT_ANTT_ENV=homologacao
+SUOT_ANTT_CNPJ=00000000000191
+SUOT_ANTT_CERT_PATH=/certs/certificado.pfx
+SUOT_ANTT_CERT_PASSWORD=senha_segura
+```
+
+<Info>
+  O RNTRC utilizado em homologação deve ser um RNTRC válido e ativo. A ANTT valida o número durante o registro do CIOT mesmo no ambiente de teste.
+</Info>
+
+---
+
+## Dados de teste
+
+Os ambientes de homologação da SEFAZ e da ANTT possuem diretrizes próprias para dados de teste, publicadas nos portais oficiais de cada órgão. Consulte sempre a documentação técnica oficial do serviço que você está integrando (ex.: Portal da NF-e/CT-e, Portal ANTT Transporte) para obter:
+
+- Exemplos de XML válidos para cada tipo de documento.
+- Tabelas de `cStat` esperados para cenários de rejeição.
+- Chaves de acesso de exemplo para consultas.
+
+<Tip>
+  A SEFAZ disponibiliza arquivos de schema (XSD) e exemplos de XML no portal técnico de cada UF. Use-os em conjunto com os Value Objects do SUOT SDK para validar seus dados localmente antes de enviar ao webservice.
+</Tip>
+
+<Warning>
+  **Não utilize dados reais de carga ou frete em homologação.** Mesmo que os documentos não tenham validade fiscal, informações sensíveis de clientes, motoristas, rotas e valores podem ser armazenadas nos servidores de teste dos órgãos e não estão protegidas pelas mesmas garantias do ambiente de produção.
+</Warning>
+
+---
+
+## O que testar em homologação
+
+Use o checklist abaixo como guia mínimo antes de liberar sua integração para produção. Automatize cada item com PHPUnit apontando para o ambiente de homologação.
+
+**Fiscal SDK — CT-e**
+- [ ] Emissão de CT-e com sucesso (retorno `cStat 100`)
+- [ ] Rejeição esperada por chave duplicada (`cStat 204` ou equivalente)
+- [ ] Rejeição por dados inválidos (ex.: CFOP incorreto)
+- [ ] Captura e tratamento de `InfrastructureException`
+- [ ] Retry Policy acionada em falha transitória de rede
+- [ ] Cancelamento de CT-e autorizado
+
+**Fiscal SDK — MDF-e**
+- [ ] Emissão de MDF-e com sucesso
+- [ ] Encerramento de MDF-e
+- [ ] Inclusão de condutor
+- [ ] Cancelamento de MDF-e
+
+**ANTT SDK — CIOT**
+- [ ] Registro de CIOT com sucesso
+- [ ] Consulta de CIOT registrado
+- [ ] Rejeição por dados incompletos
+
+**ANTT SDK — RNTRC**
+- [ ] Consulta de RNTRC ativo
+- [ ] Tratamento de RNTRC inválido ou suspenso
+
+<Tip>
+  Automatize os testes de homologação com **PHPUnit** invocando os handlers do SDK diretamente, sem camada HTTP adicional. O padrão CQRS do SUOT SDK (Command → Handler → Result) facilita a criação de testes unitários e de integração previsíveis.
+
+  ```php
+  use PHPUnit\Framework\TestCase;
+  use Suot\Fiscal\Cte\Command\EmitirCTeCommand;
+  use Suot\Fiscal\Cte\Handler\EmitirCTeHandler;
+
+  final class EmitirCTeTest extends TestCase
+  {
+      public function testEmissaoComSucesso(): void
+      {
+          $handler = new EmitirCTeHandler(config: $this->homologacaoConfig());
+          $result  = $handler->handle(command: $this->buildCommand());
+
+          $this->assertTrue($result->isAutorizado());
+          $this->assertSame(100, $result->cStat());
+      }
+  }
+  ```
+</Tip>
+
+---
+
+## Limitações do ambiente de homologação
+
+Esteja ciente das seguintes limitações antes de planejar sua estratégia de testes:
+
+- **Documentos sem validade jurídica.** Nenhum CT-e, MDF-e ou CIOT emitido em homologação pode ser utilizado em operações reais.
+- **Instabilidade pontual.** Algumas UFs mantêm ambientes de homologação da SEFAZ com disponibilidade inferior ao de produção. Falhas esporádicas de conectividade são esperadas e não indicam problema no seu código.
+- **Dados não persistem indefinidamente.** Alguns ambientes de teste limpam sua base periodicamente — não dependa de chaves ou registros criados anteriormente.
+- **Subset de validações.** Em raros casos, o ambiente de homologação pode aceitar documentos que seriam rejeitados em produção (ou vice-versa). Sempre valide o XSD localmente como etapa adicional.
+- **ANTT homologação.** O ambiente de testes da ANTT pode ter cobertura de cenários menor que o da SEFAZ. Planeje cenários alternativos para funcionalidades com menor suporte no sandbox oficial.
+
+<Warning>
+  Nunca utilize a chave de acesso ou o número de protocolo retornados pelo ambiente de homologação como referência em sistemas de produção. Eles são tecnicamente válidos no formato, mas não têm existência no ambiente real.
+</Warning>
+
+---
+
+Pronto para ir para produção? Siga o checklist completo em [Checklist de produção](/guias/producao).

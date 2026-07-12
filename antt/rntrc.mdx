@@ -1,0 +1,97 @@
+---
+title: "Consultar RNTRC com o SUOT ANTT SDK"
+sidebarTitle: "RNTRC"
+description: "Consulte o Registro Nacional de Transportadores Rodoviários de Cargas via SUOT ANTT SDK para verificar a situação cadastral de transportadores."
+---
+
+O RNTRC (Registro Nacional de Transportadores Rodoviários de Cargas) é o cadastro obrigatório mantido pela ANTT que habilita empresas e profissionais autônomos a realizar o transporte rodoviário de cargas no Brasil. Antes de contratar um serviço de transporte, é boa prática consultar a situação do transportador no RNTRC para confirmar que ele está regularmente habilitado. O SUOT ANTT SDK expõe essa consulta por meio do padrão Command → Handler → Result.
+
+<Note>
+  A consulta ao RNTRC é uma operação **somente leitura**. O SDK não realiza cadastro, alteração ou cancelamento de registros RNTRC — essas operações são realizadas diretamente pelo transportador junto à ANTT.
+</Note>
+
+## Consultando um transportador
+
+Construa o comando com o CNPJ ou CPF do transportador e execute via handler:
+
+```php
+<?php
+
+use Suot\Antt\Rntrc\Command\ConsultarRntrcCommand;
+use Suot\Antt\Rntrc\Handler\RntrcHandler;
+use Suot\Antt\Core\ValueObject\Cnpj;
+use Suot\Antt\Core\Exception\InfrastructureException;
+
+$command = new ConsultarRntrcCommand(
+    cnpj: new Cnpj('00.000.000/0001-00'),
+);
+
+$handler = new RntrcHandler(config: $config);
+
+try {
+    $result = $handler->consultar(command: $command);
+
+    if ($result->isSuccess()) {
+        $dados = $result->getData();
+
+        echo 'RNTRC: ' . $dados->numeroRntrc . PHP_EOL;
+        echo 'Situação: ' . $dados->situacaoCadastral . PHP_EOL;
+        echo 'Válido até: ' . $dados->validadeRegistro->format('d/m/Y') . PHP_EOL;
+        echo 'Categoria: ' . $dados->categoria . PHP_EOL;
+    } else {
+        $rejeicao = $result->getRejection();
+
+        echo 'Rejeição: [' . $rejeicao->codigo . '] ' . $rejeicao->mensagem . PHP_EOL;
+    }
+} catch (InfrastructureException $e) {
+    // Falha técnica: conectividade, timeout, autenticação
+    echo 'Falha técnica: ' . $e->getMessage() . PHP_EOL;
+}
+```
+
+Para transportadores autônomos (pessoa física), utilize `Cpf` no lugar de `Cnpj`:
+
+```php
+<?php
+
+use Suot\Antt\Rntrc\Command\ConsultarRntrcCommand;
+use Suot\Antt\Core\ValueObject\Cpf;
+
+$command = new ConsultarRntrcCommand(
+    cpf: new Cpf('000.000.000-00'),
+);
+```
+
+## Dados disponíveis no Result
+
+Quando `$result->isSuccess()` retorna `true`, o objeto retornado por `$result->getData()` contém:
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `numeroRntrc` | `string` | Número do registro RNTRC |
+| `situacaoCadastral` | `string` | Situação do registro (ex.: `ATIVO`, `INATIVO`, `SUSPENSO`) |
+| `validadeRegistro` | `DateTimeImmutable` | Data de validade do registro |
+| `categoria` | `string` | Categoria do transportador (ex.: `ETC`, `CTC`, `TAC`) |
+| `nomeRazaoSocial` | `string` | Nome ou razão social registrada |
+| `uf` | `string` | UF de registro do transportador |
+
+<Note>
+  Os campos disponíveis dependem do tipo de transportador (pessoa jurídica ou autônomo) e da resposta retornada pela ANTT. Campos opcionais podem ser `null` quando não informados pela ANTT.
+</Note>
+
+## Quando consultar
+
+Integre a consulta ao RNTRC no fluxo da sua aplicação nos seguintes momentos:
+
+- **Cadastro de fornecedores** — valide o RNTRC antes de registrar um novo transportador na sua base
+- **Antes de emitir o CIOT** — confirme que o transportador está ativo antes de registrar a operação
+- **Verificação periódica** — transportadores habilitados podem ter seu registro suspenso ou vencido; consulte regularmente se a sua operação exige isso
+- **Auditoria e conformidade** — registre o resultado da consulta junto ao histórico da operação para fins de comprovação
+
+<Tip>
+  Armazene o resultado da consulta RNTRC com carimbo de data/hora junto ao registro da operação. Em caso de auditoria, você terá evidência de que verificou a habilitação do transportador no momento da contratação.
+</Tip>
+
+---
+
+Consulte a página de [Resultados](/antt/resultados) para entender o modelo completo de `Result`, rejeições esperadas e `InfrastructureException`.

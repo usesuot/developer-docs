@@ -1,0 +1,132 @@
+---
+title: "Rejeições e erros no SUOT ANTT SDK — diagnóstico e tratamento"
+sidebarTitle: "Rejeições"
+description: "Trate rejeições e falhas técnicas do SUOT ANTT SDK: identifique o tipo de erro, interprete o Result e saiba quando reconstruir o Command ou acionar retry."
+---
+
+O SUOT ANTT SDK separa explicitamente dois tipos de problemas: rejeições esperadas, que são respostas regulatórias da ANTT a dados incorretos ou situações de negócio inválidas, e falhas técnicas, que são impedimentos de infraestrutura que não chegam à ANTT. Entender essa distinção é essencial para construir um tratamento de erros correto e evitar loops de retry desnecessários.
+
+## Rejeições esperadas
+
+Rejeições esperadas ocorrem quando a ANTT processou a requisição e retornou uma negativa com fundamento regulatório. Elas são **retornadas dentro do `Result`** — não há exceção lançada.
+
+Exemplos comuns de rejeição:
+
+| Código (exemplo) | Situação |
+|---|---|
+| `CIOT_DUPLICADO` | O CIOT já foi registrado para esta operação |
+| `RNTRC_INATIVO` | O transportador consultado está com RNTRC inativo ou suspenso |
+| `RNTRC_NAO_ENCONTRADO` | Nenhum registro RNTRC encontrado para o CNPJ/CPF informado |
+| `CNPJ_INVALIDO` | O CNPJ informado não é válido segundo as regras da ANTT |
+| `OPERACAO_NAO_PERMITIDA` | A operação não é permitida para a categoria do transportador |
+| `DADOS_INCONSISTENTES` | Os dados da operação apresentam inconsistência regulatória |
+
+```php
+<?php
+
+$result = $handler->registrar(command: $command);
+
+if (! $result->isSuccess()) {
+    $rejeicao = $result->getRejection();
+
+    // Registre a rejeição com contexto suficiente para diagnóstico
+    logger()->warning('Rejeição ANTT', [
+        'operacao'  => 'registrar-ciot',
+        'codigo'    => $rejeicao->codigo,
+        'mensagem'  => $rejeicao->mensagem,
+        'detalhes'  => $rejeicao->detalhes ?? null,
+    ]);
+
+    // Decida o fluxo com base no código da rejeição
+    match ($rejeicao->codigo) {
+        'CIOT_DUPLICADO'      => throw new CiotDuplicadoException($rejeicao->mensagem),
+        'RNTRC_INATIVO'       => throw new TransportadorInativoException($rejeicao->mensagem),
+        default               => throw new RejeicaoAnttException($rejeicao->codigo, $rejeicao->mensagem),
+    };
+}
+```
+
+## Falhas técnicas
+
+Falhas técnicas ocorrem quando algo impediu que a operação chegasse à ANTT ou que a resposta fosse processada. O SDK lança `InfrastructureException` — nunca retorna um `Result` com falha técnica.
+
+Causas comuns:
+
+| Causa | Descrição |
+|---|---|
+| Conectividade | Sem acesso à rede ou ao endpoint da ANTT |
+| Timeout | A ANTT não respondeu dentro do prazo configurado |
+| Autenticação | Credenciais inválidas, expiradas ou sem permissão |
+| Resposta malformada | A ANTT retornou uma resposta fora do formato esperado |
+
+```php
+<?php
+
+use Suot\Antt\Core\Exception\InfrastructureException;
+
+try {
+    $result = $handler->registrar(command: $command);
+
+    // Trate sucesso e rejeição esperada aqui
+} catch (InfrastructureException $e) {
+    logger()->error('Falha técnica ANTT SDK', [
+        'operacao'  => 'registrar-ciot',
+        'mensagem'  => $e->getMessage(),
+        'codigo'    => $e->getCode(),
+        'trace'     => $e->getTraceAsString(),
+    ]);
+
+    // Notifique o time de operações
+    // Aplique retry com backoff exponencial conforme a política definida
+    // NÃO reprocesse imediatamente
+}
+```
+
+## Padrão completo de tratamento
+
+```php
+<?php
+
+use Suot\Antt\Core\Exception\InfrastructureException;
+
+try {
+    $result = $handler->registrar(command: $command);
+
+    if ($result->isSuccess()) {
+        $dados = $result->getData();
+
+        // Operação concluída com sucesso
+        echo 'CIOT: ' . $dados->numeroCiot . PHP_EOL;
+
+    } else {
+        // Rejeição esperada: corrija os dados e reconstrua o Command
+        $rejeicao = $result->getRejection();
+
+        echo 'Rejeição [' . $rejeicao->codigo . ']: ' . $rejeicao->mensagem . PHP_EOL;
+    }
+
+} catch (InfrastructureException $e) {
+    // Falha técnica: aplique retry com backoff ou escale para o time de operações
+    echo 'Falha técnica: ' . $e->getMessage() . PHP_EOL;
+}
+```
+
+## Quando reconstruir o Command
+
+Reconstrua o `Command` quando `$result->isSuccess()` retornar `false`. A rejeição indica que os dados enviados não satisfazem as regras regulatórias da ANTT. O fluxo correto é:
+
+1. Ler o `codigo` e a `mensagem` da rejeição
+2. Identificar qual campo ou regra causou a rejeição
+3. Corrigir os dados na camada de negócio da sua aplicação
+4. Construir um novo `Command` com os dados corrigidos
+5. Executar novamente
+
+<Warning>
+  **Não faça retry de rejeições esperadas.** Reenviar o mesmo `Command` sem corrigir os dados apenas duplicará a rejeição. Rejeições esperadas não são erros transitórios — são respostas definitivas da ANTT com base nos dados que você enviou.
+</Warning>
+
+## Retry para falhas técnicas
+
+Falhas técnicas (`InfrastructureException`) podem ser transitórias — uma queda momentânea de conectividade ou um timeout eventual. Nesses casos, retry com backoff exponencial é apropriado.
+
+Os mesmos conceitos de `RetryPolicy` utilizados no SUOT Fiscal SDK se aplicam aqui. Consulte o guia de [RetryPolicy](/fiscal/retry) para implementação detalhada de políticas de retry, incluindo jitter, número máximo de tentativas e circuito aberto.

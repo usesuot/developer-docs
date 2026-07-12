@@ -1,0 +1,116 @@
+---
+title: "Tokens Composer — autenticação no registry SUOT"
+sidebarTitle: "Tokens Composer"
+description: "Gere e gerencie tokens Composer para autenticar desenvolvedores e pipelines de CI/CD no registry privado packages.suot.dev da SUOT."
+---
+
+O registry Composer privado da SUOT (`packages.suot.dev`) requer autenticação para cada requisição de download de pacotes. Essa autenticação é feita por meio de **tokens Composer** — credenciais emitidas no Developer Portal e associadas à licença da sua organização. Este guia explica como gerar, usar e revogar tokens com segurança.
+
+## O que é um token Composer
+
+Um token Composer é uma credencial que autoriza o Composer a baixar pacotes do `packages.suot.dev`. Quando o Composer tenta resolver ou instalar pacotes `suot/*`, ele apresenta o token ao registry. O registry valida o token e verifica se a organização associada possui uma licença ativa para os pacotes solicitados.
+
+O token em si não contém informações sensíveis sobre a empresa — ele é apenas uma chave de acesso. A associação com a licença da organização é mantida pelo Developer Portal.
+
+## Tipos de token
+
+A SUOT distingue dois usos principais para tokens Composer:
+
+| Tipo | Uso recomendado |
+|------|-----------------|
+| **Token de desenvolvedor** | Uso pessoal em máquinas locais. Cada desenvolvedor gera o seu próprio token. Deve ser rotacionado quando o desenvolvedor sai da organização. |
+| **Token de CI/CD** | Uso em pipelines automatizados (GitHub Actions, GitLab CI, etc.). Deve ser um token dedicado, separado dos tokens pessoais, configurado como segredo na plataforma de CI. |
+
+Manter tokens de desenvolvedor e de CI/CD separados facilita a revogação seletiva: se um pipeline for comprometido, você revoga apenas o token de CI/CD sem afetar os tokens dos desenvolvedores.
+
+## Gerar um token
+
+<Steps>
+  <Step title="Acesse o Developer Portal">
+    Faça login em [developers.suot.dev](https://developers.suot.dev) com a conta membro da organização para a qual deseja gerar o token.
+  </Step>
+  <Step title="Navegue até a seção de tokens">
+    No painel da organização, localize a seção de tokens Composer. Você verá os tokens existentes (com datas de criação e última utilização) e a opção de criar um novo.
+  </Step>
+  <Step title="Crie o token">
+    Selecione criar novo token. Dê um nome descritivo — por exemplo, `dev-joao-notebook` ou `ci-github-actions-producao`. Um nome claro facilita identificar e revogar tokens específicos no futuro.
+  </Step>
+  <Step title="Copie o valor gerado">
+    O valor completo do token é exibido **apenas uma vez** no momento da criação. Copie-o imediatamente e armazene em local seguro. O Developer Portal não permite recuperar o valor depois — apenas revogar e criar um novo.
+  </Step>
+</Steps>
+
+<Warning>
+  Nunca inclua o token em código-fonte, arquivos commitados no git, mensagens de commit ou saídas de log. Se o token for exposto acidentalmente, revogue-o imediatamente no Developer Portal e emita um novo.
+</Warning>
+
+## Usar o token
+
+Há duas formas de passar o token ao Composer: por variável de ambiente ou por `auth.json`. A variável de ambiente é recomendada para CI/CD e para ambientes onde você não quer persistir credenciais em disco.
+
+### Via variável de ambiente `COMPOSER_AUTH` (recomendado)
+
+Defina a variável de ambiente `COMPOSER_AUTH` com um JSON contendo as credenciais no formato `http-basic`:
+
+```bash
+export COMPOSER_AUTH='{"http-basic":{"packages.suot.dev":{"username":"token","password":"SEU_TOKEN_AQUI"}}}'
+```
+
+Substitua `SEU_TOKEN_AQUI` pelo token gerado no Developer Portal. Em pipelines de CI/CD, configure esse valor como variável de ambiente secreta na sua plataforma — nunca o escreva diretamente no arquivo de configuração do pipeline.
+
+```bash
+# Exemplo de uso com composer install em um pipeline
+COMPOSER_AUTH='{"http-basic":{"packages.suot.dev":{"username":"token","password":"SEU_TOKEN_AQUI"}}}' \
+  composer install --no-interaction --prefer-dist
+```
+
+### Via auth.json (uso local)
+
+Para uso local em máquina de desenvolvimento, você pode criar um arquivo `auth.json` na raiz do projeto:
+
+```json auth.json
+{
+  "http-basic": {
+    "packages.suot.dev": {
+      "username": "token",
+      "password": "SEU_TOKEN_AQUI"
+    }
+  }
+}
+```
+
+<Warning>
+  O arquivo `auth.json` **nunca deve ser commitado no git**. Adicione-o imediatamente ao `.gitignore` do projeto.
+</Warning>
+
+```gitignore .gitignore
+# Credenciais Composer — nunca commitar
+auth.json
+```
+
+O Composer também suporta um `auth.json` global em `~/.composer/auth.json`, que se aplica a todos os projetos da máquina. Use essa opção se preferir não ter um `auth.json` por projeto.
+
+## Segurança — resumo das práticas obrigatórias
+
+<Warning>
+  **Nunca commite tokens no git.** Nem em branches de feature, nem em stashes, nem em commits temporários. Repositórios git têm histórico permanente — um token commitado pode ser recuperado mesmo após remoção posterior.
+</Warning>
+
+<Warning>
+  **Nunca registre tokens em logs.** Evite imprimir o conteúdo de variáveis de ambiente em logs de aplicação ou de pipeline. Plataformas de CI geralmente mascaram segredos, mas não confie exclusivamente nisso.
+</Warning>
+
+<Warning>
+  **Rotacione imediatamente se exposto.** Se um token aparecer em um log público, em uma mensagem de commit, em um pull request ou em qualquer lugar não autorizado: revogue-o no Developer Portal e gere um novo antes de qualquer outra ação.
+</Warning>
+
+## Revogar tokens
+
+Para revogar um token, acesse [developers.suot.dev](https://developers.suot.dev), navegue até a seção de tokens da organização e selecione a opção de revogação ao lado do token desejado. A revogação é imediata — o token deixa de funcionar para novas requisições ao registry instantaneamente.
+
+Recomenda-se revogar tokens quando:
+
+- Um desenvolvedor sai da organização
+- Um token de CI/CD é substituído por um novo
+- Há suspeita de exposição do token
+- O token não é mais utilizado (boa higiene de credenciais)

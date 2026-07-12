@@ -1,0 +1,90 @@
+---
+title: "SUOT Fiscal SDK — infraestrutura fiscal PHP para transporte"
+sidebarTitle: "Visão Geral"
+description: "Conheça o SUOT Fiscal SDK for PHP: pacotes para CT-e, MDF-e e autorizadores SEFAZ com tipagem total, PHPStan máximo e Developer Experience para IDEs e IA."
+---
+
+O SUOT Fiscal SDK não é apenas uma biblioteca de emissão de documentos fiscais — é uma **infraestrutura fiscal completa para transporte** construída em PHP 8.4+. Projetado para transportadoras, embarcadores e plataformas de logística, o SDK cobre todo o ciclo de vida dos documentos fiscais eletrônicos: da construção tipada dos dados à comunicação com os autorizadores SEFAZ, passando pelo tratamento de eventos, cancelamentos e encerramento de manifesto. Cada camada foi pensada para oferecer máxima previsibilidade em tempo de desenvolvimento e segurança em produção.
+
+## O que o Fiscal SDK oferece
+
+<CardGroup cols={2}>
+  <Card title="CT-e" icon="file-invoice" href="/fiscal/cte">
+    Emissão, cancelamento, carta de correção e consulta de Conhecimento de Transporte Eletrônico com tipagem completa e validação em camadas.
+  </Card>
+  <Card title="MDF-e" icon="truck" href="/fiscal/mdfe">
+    Emissão, encerramento, inclusão de condutor e cancelamento de Manifesto Eletrônico de Documentos Fiscais para cargas em trânsito.
+  </Card>
+  <Card title="SEFAZ / Autorizadores" icon="network-wired" href="/fiscal/configuracao">
+    Suporte aos autorizadores estaduais, SVC-AN e SVC-RS. Chaveamento por UF com fallback configurável e tratamento padronizado de retornos.
+  </Card>
+  <Card title="Laravel Bridge" icon="laravel" href="/fiscal/laravel-bridge">
+    Integração nativa com Laravel: Service Provider, Facades, configuração via `config/fiscal.php` e suporte a múltiplos emitentes por tenant.
+  </Card>
+</CardGroup>
+
+## Pacotes disponíveis
+
+O Fiscal SDK é distribuído como um conjunto de pacotes Composer independentes e composáveis. Instale apenas o que o seu projeto precisa.
+
+| Pacote | Descrição |
+|---|---|
+| `suot/fiscal-core` | Tipos base, Value Objects, contratos e interfaces compartilhadas por todos os pacotes fiscais |
+| `suot/fiscal-sefaz` | Comunicação com os autorizadores SEFAZ: envio, consulta, retorno e tratamento de erros |
+| `suot/fiscal-cte` | Emissão e gestão completa de CT-e: construção, assinatura, transmissão e eventos |
+| `suot/fiscal-mdfe` | Emissão e gestão completa de MDF-e: construção, assinatura, transmissão e encerramento |
+| `suot/fiscal-laravel` | Laravel Bridge opcional: Service Provider, Facades e helpers de configuração |
+
+Todos os pacotes são instalados a partir do registry privado **packages.suot.dev** e requerem uma licença SUOT ativa. Veja [Instalação](/fiscal/instalacao) para os detalhes de configuração do Composer.
+
+## Documentos em desenvolvimento e roadmap
+
+O Fiscal SDK está em expansão contínua. Os documentos abaixo estão previstos e serão disponibilizados em versões futuras:
+
+<Note>
+  Os documentos listados nesta seção ainda não estão disponíveis para uso em produção. As informações abaixo refletem o estado atual de desenvolvimento e podem ser alteradas sem aviso prévio.
+</Note>
+
+**CT-e OS — Conhecimento de Transporte Eletrônico para Outros Serviços** <Badge>Em desenvolvimento</Badge>
+
+Suporte ao CT-e OS para documentar prestações de serviço de transporte não enquadradas no CT-e padrão, como transporte de valores e de pessoas.
+
+**BP-e — Bilhete de Passagem Eletrônico** <Badge>Roadmap</Badge>
+
+Suporte ao Bilhete de Passagem Eletrônico para transportadoras de passageiros. Em avaliação de escopo e prioridade.
+
+## Developer Experience
+
+O Fiscal SDK foi projetado desde o início para oferecer uma experiência de desenvolvimento previsível e produtiva:
+
+- **Tipagem total** — sem arrays associativos soltos ou `mixed`. Cada campo é um tipo ou Value Object com validação embutida.
+- **PHPStan nível máximo** — toda a base de código é validada no nível máximo de análise estática, garantindo contratos explícitos em cada API pública.
+- **Sem métodos mágicos** — nenhum `__get`, `__set` ou `__call`. O que a IDE e a IA enxergam é exatamente o que existe.
+- **Named arguments e enums** — APIs construídas com parâmetros nomeados e enums PHP 8.1+ para eliminar erros por posição e magic strings.
+- **Fluent Interface com Step Builder** — construção de documentos guiada passo a passo pelo compilador: você não consegue criar um CT-e incompleto sem um erro de tipo.
+- **Padrão CQRS** — Command, Handler e Result explícitos em todas as operações de transmissão. Sem efeitos colaterais escondidos.
+- **PHPDoc em pt-BR** — toda a documentação inline está em português do Brasil, facilitando leitura por equipes nacionais e ferramentas de IA treinadas no contexto fiscal brasileiro.
+
+## Requisitos
+
+Antes de instalar o Fiscal SDK, verifique se o seu ambiente atende aos seguintes requisitos:
+
+- **PHP 8.4** ou superior
+- **Composer 2** (Composer 1 não é suportado)
+- **Licença SUOT ativa** — obtenha a sua em [developers.suot.dev](/platform/licencas)
+- **Token Composer** — gerado no painel SUOT para autenticar o acesso ao registry privado ([saiba mais](/platform/tokens-composer))
+- Extensões PHP: `openssl`, `soap`, `curl`, `mbstring`, `dom` (geralmente já presentes em ambientes de produção)
+
+## Próximos passos
+
+<CardGroup cols={3}>
+  <Card title="Instalação" icon="download" href="/fiscal/instalacao">
+    Configure o registry privado e instale os pacotes do Fiscal SDK com Composer.
+  </Card>
+  <Card title="Configuração" icon="sliders" href="/fiscal/configuracao">
+    Configure o CNPJ emitente, certificado digital A1 e ambiente SEFAZ.
+  </Card>
+  <Card title="Emitir CT-e" icon="file-invoice" href="/fiscal/cte">
+    Construa e transmita seu primeiro Conhecimento de Transporte Eletrônico.
+  </Card>
+</CardGroup>

@@ -1,0 +1,226 @@
+---
+title: "Padrão CQRS nos SDKs SUOT — Command, Query e separação de intent"
+sidebarTitle: "CQRS"
+description: "Veja como os SDKs SUOT aplicam o padrão CQRS: Commands imutáveis, Handlers especializados e Results tipados para todas as operações fiscais e regulatórias."
+---
+
+CQRS — *Command Query Responsibility Segregation* — é o princípio de separar a **intenção** de uma operação (o que você quer fazer) da sua **execução** (como isso é feito) e do seu **resultado** (o que aconteceu). Nos SDKs SUOT, isso se traduz em três peças: o **Command** ou **Query** declara o que a aplicação quer, o **Handler** executa, e o **Result** encapsula o que o serviço externo respondeu. O resultado é uma integração previsível, testável e compreensível por qualquer ferramenta — humana ou de IA.
+
+## Commands são intenções, não ações
+
+Um Command não faz nada por si mesmo. Ele é um objeto imutável que diz: *"quero executar esta operação, com estes dados"*. A execução de fato só ocorre quando o Command é passado ao Handler correspondente.
+
+Essa separação tem uma consequência importante: você pode construir, inspecionar, serializar e até registrar em log um Command sem que nenhuma operação de rede aconteça.
+
+```php
+<?php
+
+use Suot\Fiscal\CteAutorizacao\CteAutorizacaoCommand;
+use Suot\Fiscal\ValueObjects\Cnpj;
+use Suot\Fiscal\ValueObjects\ChaveCTe;
+
+// Construir o Command não chama nenhum serviço externo.
+// É apenas uma declaração de intenção com dados validados.
+$command = new CteAutorizacaoCommand(
+    emitente: new Cnpj('12345678000195'),
+    chave: new ChaveCTe('35240112345678000195570010000000011000000014'),
+    xml: $xmlAssinado,
+);
+
+// Você pode inspecionar o Command antes de executá-lo.
+$logger->debug('Command construído', [
+    'emitente' => (string) $command->emitente(),
+    'chave'    => (string) $command->chave(),
+]);
+
+// A operação só acontece quando o Handler recebe o Command.
+$result = $handler->handle(command: $command);
+```
+
+## Handlers são executores
+
+O Handler tem uma única responsabilidade: receber um Command, chamar o serviço externo e devolver um Result. Ele não decide *se* a operação deve ser feita — apenas *como* fazê-la.
+
+Cada Handler é especializado em um tipo de Command. O `CteAutorizacaoHandler` trata apenas `CteAutorizacaoCommand`; o `ConsultaRntrcHandler` trata apenas `ConsultaRntrcCommand`. Essa especialização garante que o PHPStan possa verificar a compatibilidade entre Command e Handler em tempo de análise estática.
+
+```php
+<?php
+
+use Suot\Fiscal\CteAutorizacao\CteAutorizacaoHandler;
+use Suot\Fiscal\Exceptions\InfrastructureException;
+
+$handler = new CteAutorizacaoHandler(
+    credentials: $credentials,
+    environment: $environment,
+    retryPolicy: $retryPolicy,
+);
+
+try {
+    // O Handler executa a operação e devolve sempre um Result.
+    // Rejeições de negócio estão no Result — não lançam exceção.
+    $result = $handler->handle(command: $command);
+} catch (InfrastructureException $e) {
+    // Apenas falhas técnicas chegam aqui:
+    // timeout, HTTP 5xx, perda de conectividade, etc.
+}
+```
+
+## Queries
+
+Nem toda operação muda estado — algumas apenas consultam. Para essas, os SDKs SUOT usam **Queries** em vez de Commands. A forma é idêntica: Query → Handler → Result. A diferença é semântica: uma Query nunca produz efeitos colaterais no serviço externo.
+
+```php
+<?php
+
+use Suot\Fiscal\ConsultaCte\ConsultaCteQuery;
+use Suot\Fiscal\ConsultaCte\ConsultaCteHandler;
+use Suot\Fiscal\ValueObjects\ChaveCTe;
+
+// Query: leitura — não altera o estado do CT-e na SEFAZ.
+$query = new ConsultaCteQuery(
+    chave: new ChaveCTe('35240112345678000195570010000000011000000014'),
+);
+
+$result = $consultaHandler->handle(query: $query);
+
+if ($result->isSuccess()) {
+    $situacao = $result->situacao(); // enum SituacaoCte
+}
+```
+
+<Info>
+  A distinção entre Command e Query é intencional: ao ler o código, qualquer desenvolvedor (ou agente de IA) sabe imediatamente se uma operação é uma leitura ou uma escrita — sem precisar abrir a implementação do Handler.
+</Info>
+
+## Results são tipados e imutáveis
+
+Todo Handler devolve um Result concreto e tipado para aquela operação específica. Não existe um `Result` genérico — existe `CteAutorizacaoResult`, `ConsultaCteResult`, `ConsultaRntrcResult` etc. Cada um expõe exatamente os métodos relevantes para aquela operação.
+
+```php
+<?php
+
+// CteAutorizacaoResult — disponível após autorização bem-sucedida
+if ($result->isSuccess()) {
+    $protocolo  = $result->protocolo();   // Protocolo (Value Object)
+    $dataHora   = $result->autorizadoEm(); // DateTimeImmutable
+    $xmlRetorno = $result->xmlRetorno();  // string — XML retornado pela SEFAZ
+}
+
+// CteAutorizacaoResult — disponível após rejeição
+if ($result->isRejected()) {
+    $codigo = $result->codigoRejeicao(); // int — código de rejeição SEFAZ
+    $motivo = $result->motivoRejeicao(); // string — descrição da rejeição
+}
+```
+
+Results são imutáveis: lê-los quantas vezes quiser não produz chamadas adicionais ao serviço externo nem altera o estado do objeto.
+
+## Testabilidade
+
+Como o Handler é uma dependência injetada, ele pode ser substituído por um mock nos testes unitários. Você testa a lógica da sua aplicação — o que ela faz com um sucesso, o que ela faz com uma rejeição — sem fazer nenhuma chamada real a SEFAZ ou ANTT.
+
+```php
+<?php
+
+use PHPUnit\Framework\TestCase;
+use Suot\Fiscal\CteAutorizacao\CteAutorizacaoHandler;
+use Suot\Fiscal\CteAutorizacao\CteAutorizacaoCommand;
+use Suot\Fiscal\CteAutorizacao\CteAutorizacaoResult;
+use Suot\Fiscal\ValueObjects\Protocolo;
+
+final class EmissaoCteServiceTest extends TestCase
+{
+    public function testRegistraProtocoloQuandoAutorizado(): void
+    {
+        // Cria um Result de sucesso sem chamar nenhum serviço externo.
+        $resultMock = CteAutorizacaoResult::sucesso(
+            protocolo: new Protocolo('135240000012345'),
+            autorizadoEm: new \DateTimeImmutable('2024-06-01T10:30:00-03:00'),
+            xmlRetorno: '<cteProc>...</cteProc>',
+        );
+
+        // O Handler é mockado — zero I/O.
+        $handlerMock = $this->createMock(CteAutorizacaoHandler::class);
+        $handlerMock
+            ->expects($this->once())
+            ->method('handle')
+            ->willReturn($resultMock);
+
+        // O serviço da sua aplicação recebe o Handler injetado.
+        $service = new EmissaoCteService(handler: $handlerMock);
+        $service->emitir(command: $this->umCommandValido());
+
+        // Verifica que a aplicação fez o que deveria com o sucesso.
+        $this->assertProtocoloFoiRegistrado('135240000012345');
+    }
+}
+```
+
+<Tip>
+  Escreva um teste para cada estado do Result — `isSuccess()` e `isRejected()` — e um terceiro que verifica como a aplicação reage a uma `InfrastructureException`. Esses três casos cobrem o comportamento completo da integração.
+</Tip>
+
+## Jornada do desenvolvedor
+
+Esta é a jornada típica de um desenvolvedor ao implementar uma nova operação com os SDKs SUOT:
+
+<Steps>
+  <Step title="Identificar a operação">
+    Você precisa autorizar um CT-e. A documentação indica `CteAutorizacaoCommand` e `CteAutorizacaoHandler`.
+  </Step>
+  <Step title="Autocomplete e PHPDoc">
+    Ao digitar `new CteAutorizacaoCommand(`, a IDE exibe todos os parâmetros com seus tipos e descrições em português. Nenhum argumento ambíguo — cada um é um Value Object com nome significativo.
+  </Step>
+  <Step title="Construir o Command com Value Objects">
+    Você constrói os Value Objects (`Cnpj`, `ChaveCTe`, etc.) com os dados validados. Erros de formato são detectados aqui, antes de qualquer I/O.
+
+    ```php
+    $command = new CteAutorizacaoCommand(
+        emitente: new Cnpj($dadosEmitente['cnpj']),
+        chave: new ChaveCTe($dadosCte['chave']),
+        xml: $xmlAssinado,
+    );
+    ```
+  </Step>
+  <Step title="Chamar o Handler">
+    O Handler é injetado via construtor no seu serviço. Você chama `handle(command: $command)` envolto em `try/catch` para `InfrastructureException`.
+
+    ```php
+    try {
+        $result = $this->handler->handle(command: $command);
+    } catch (InfrastructureException $e) {
+        // Falha técnica — registra e propaga ou retenta.
+    }
+    ```
+  </Step>
+  <Step title="Tratar o Result">
+    Você verifica `isSuccess()` e `isRejected()` e age de acordo — persiste o protocolo, registra o motivo da rejeição ou notifica o operador.
+
+    ```php
+    if ($result->isSuccess()) {
+        $this->repositorio->salvarProtocolo($result->protocolo());
+    }
+
+    if ($result->isRejected()) {
+        $this->notificador->alertarRejeicao(
+            codigo: $result->codigoRejeicao(),
+            motivo: $result->motivoRejeicao(),
+        );
+    }
+    ```
+  </Step>
+  <Step title="Configurar a Retry Policy">
+    Para operações críticas, você configura uma `RetryPolicy` no Handler para lidar automaticamente com falhas de infraestrutura transientes — sem alterar a lógica de negócio.
+
+    ```php
+    $handler = new CteAutorizacaoHandler(
+        credentials: $credentials,
+        environment: $environment,
+        retryPolicy: RetryPolicy::exponential(maxAttempts: 3),
+    );
+    ```
+  </Step>
+  <Step title="Reconstruir o Command se necessário">
+    Como o Command é imutável e não tem estado de execução, você pode reconstruí-lo com os mesmos dados e passar a um novo Handler após um failover ou mudança de ambiente — sem efeitos colaterais.
+  </Step>
+</Steps>

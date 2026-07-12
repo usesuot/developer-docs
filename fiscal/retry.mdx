@@ -1,0 +1,218 @@
+---
+title: Retry Policy no SUOT Fiscal SDK para falhas transitórias
+sidebarTitle: Retry Policy
+description: Configure a Retry Policy do SUOT Fiscal SDK para retentativas automáticas em falhas de infraestrutura como timeouts e erros HTTP 5xx do SEFAZ.
+---
+
+A `RetryPolicy` do SUOT Fiscal SDK foi projetada para lidar com **falhas transitórias de infraestrutura** — situações em que a comunicação com a SEFAZ não foi concluída por razões técnicas fora do controle da aplicação. Ela não substitui o tratamento de rejeições de negócio: se a SEFAZ devolveu um `cStat`, o documento foi processado e um retry sem correção dos dados resultará no mesmo código de rejeição.
+
+## Quando usar Retry
+
+<Steps>
+  <Step title="Identifique a natureza da falha">
+    Use `RetryPolicy` apenas quando uma `InfrastructureException` for lançada. Falhas retornadas em `Result` com `isRejected()` não devem ser retriadas automaticamente.
+  </Step>
+  <Step title="Verifique se a falha é transitória">
+    Timeouts, erros HTTP `503`/`502`/`500` e resets de conexão costumam ser transitórios. Erros de certificado expirado ou credenciais inválidas são permanentes — retry não resolve.
+  </Step>
+  <Step title="Consulte antes de reenviar">
+    Para documentos fiscais, antes de reenviar após uma `InfrastructureException`, considere consultar a chave do DF-e na SEFAZ. O documento pode ter sido autorizado mesmo sem você receber a resposta.
+  </Step>
+</Steps>
+
+## Falhas que disparam retry
+
+O SDK emite `InfrastructureException` (e suas subclasses) nos seguintes cenários, todos elegíveis para retry com backoff:
+
+| Subtipo | Causa típica |
+|---|---|
+| `ConnectionTimeoutException` | Timeout de conexão TCP com o webservice SEFAZ |
+| `ReadTimeoutException` | Timeout aguardando resposta após conexão estabelecida |
+| `ServerErrorException` | HTTP 500, 502, 503 ou 504 retornado pelo servidor SEFAZ |
+| `ConnectionResetException` | Reset de conexão durante a transmissão do XML |
+| `ServiceUnavailableException` | SEFAZ em manutenção ou janela de indisponibilidade programada |
+
+## Falhas que NÃO devem ter retry
+
+<Warning>
+As situações abaixo **não devem** ser retriadas automaticamente. Retry sem correção prévia resultará no mesmo erro indefinidamente, gerando consumo desnecessário de recursos e possíveis bloqueios.
+</Warning>
+
+- **Rejeições SEFAZ** (`cStat` 110, 204, 225, 539, etc.) — retornadas em `Result`, não são exceções
+- **Certificado digital expirado ou inválido** — `CertificateException`
+- **Credenciais de ambiente incorretas** — `AuthenticationException`
+- **XML com schema inválido** — o erro será o mesmo na próxima tentativa
+- **CNPJ ou IE inválidos** — rejeição de negócio, requer correção dos dados
+
+## Configurando a Retry Policy
+
+O SDK oferece duas estratégias prontas: `exponential` (recomendada para produção) e `fixed` (útil para testes):
+
+```php
+use SUOT\Fiscal\Retry\RetryPolicy;
+use SUOT\Fiscal\Retry\BackoffStrategy;
+use SUOT\Fiscal\Exception\ConnectionTimeoutException;
+use SUOT\Fiscal\Exception\ServerErrorException;
+
+// Backoff exponencial: 500ms → 1000ms → 2000ms
+$policy = RetryPolicy::exponential(
+    maxAttempts: 3,
+    baseDelayMs: 500,
+    multiplier: 2.0,
+    retryOn: [
+        ConnectionTimeoutException::class,
+        ServerErrorException::class,
+    ]
+);
+
+// Backoff fixo: 1000ms entre cada tentativa
+$policyFixa = RetryPolicy::fixed(
+    maxAttempts: 3,
+    delayMs: 1000,
+    retryOn: [
+        ConnectionTimeoutException::class,
+        ServerErrorException::class,
+    ]
+);
+```
+
+### Usando a Retry Policy com um Handler
+
+```php
+use SUOT\Fiscal\Handler\AutorizacaoHandler;
+use SUOT\Fiscal\Command\AutorizarNFeCommand;
+use SUOT\Fiscal\Retry\RetryPolicy;
+use SUOT\Fiscal\Exception\InfrastructureException;
+
+$command = new AutorizarNFeCommand(/* ... */);
+
+$policy = RetryPolicy::exponential(maxAttempts: 3, baseDelayMs: 500);
+
+try {
+    // O closure é executado até maxAttempts vezes em caso de InfrastructureException
+    $result = $policy->execute(
+        fn () => $handler->handle($command)
+    );
+
+    if ($result->isSuccess()) {
+        $chave     = $result->chave();
+        $protocolo = $result->protocolo();
+        $xml       = $result->xmlAutorizado();
+
+        logger()->info('NF-e autorizada após retry', compact('chave', 'protocolo'));
+
+    } elseif ($result->isRejected()) {
+        // Rejeições chegam aqui normalmente — não foram retriadas
+        logger()->warning('NF-e rejeitada', [
+            'cStat'   => $result->status(),
+            'xMotivo' => $result->motivo(),
+        ]);
+    }
+
+} catch (InfrastructureException $e) {
+    // Todas as tentativas esgotadas — falha permanente de infraestrutura
+    logger()->critical('NF-e não autorizada após todas as tentativas', [
+        'attempts' => $policy->maxAttempts(),
+        'error'    => $e->getMessage(),
+    ]);
+
+    // Enfileire para processamento posterior ou acione alertas
+}
+```
+
+## Retry e idempotência
+
+CT-e e NF-e possuem uma **chave de acesso** (chave DFe) de 44 dígitos que identifica unicamente o documento. Reenviar o mesmo XML com a mesma chave resultará no código `cStat 204` (Duplicidade de NF-e) caso o documento já tenha sido autorizado — o que é um comportamento esperado da SEFAZ, não um erro.
+
+O SUOT Fiscal SDK trata isso da seguinte forma:
+
+- **Antes de reenviar após `InfrastructureException`**: o SDK pode, opcionalmente, executar uma consulta pela chave para verificar se o documento já foi autorizado antes de submeter novamente.
+- **Se `cStat 204` for retornado no retry**: o SDK interpreta isso como sucesso implícito e tenta recuperar o XML autorizado via consulta, disponibilizando-o no `Result`.
+
+```php
+use SUOT\Fiscal\Retry\RetryPolicy;
+
+// Habilite a verificação de idempotência antes do reenvio
+$policy = RetryPolicy::exponential(
+    maxAttempts: 3,
+    baseDelayMs: 500,
+    checkIdempotencyBeforeRetry: true,  // consulta chave antes de reenviar
+);
+```
+
+<Note>
+A consulta de idempotência consome uma requisição adicional ao webservice da SEFAZ. Em ambientes de alto volume, avalie o impacto no consumo de cota e no tempo de resposta total antes de habilitar essa opção em todos os Handlers.
+</Note>
+
+## Retry em jobs assíncronos (Laravel)
+
+<Tip>
+Em aplicações Laravel, prefira processar autorizações em jobs com `dispatch()->onQueue()`. Use o sistema de retry nativo do Laravel com backoff exponencial para delegar o controle de tentativas à fila, mantendo a lógica de negócio simples.
+</Tip>
+
+```php
+// app/Jobs/AutorizarNFeJob.php
+
+namespace App\Jobs;
+
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Queue\InteractsWithQueue;
+use SUOT\Fiscal\Handler\AutorizacaoHandler;
+use SUOT\Fiscal\Command\AutorizarNFeCommand;
+use SUOT\Fiscal\Exception\InfrastructureException;
+
+class AutorizarNFeJob implements ShouldQueue
+{
+    use Queueable, InteractsWithQueue;
+
+    // Máximo de tentativas pelo sistema de filas do Laravel
+    public int $tries = 5;
+
+    // Backoff exponencial em segundos: 10s, 20s, 40s, 80s, 160s
+    public function backoff(): array
+    {
+        return [10, 20, 40, 80, 160];
+    }
+
+    public function __construct(
+        private readonly AutorizarNFeCommand $command
+    ) {}
+
+    public function handle(AutorizacaoHandler $handler): void
+    {
+        $result = $handler->handle($this->command);
+
+        if ($result->isSuccess()) {
+            // Persista e finalize
+            return;
+        }
+
+        if ($result->isRejected()) {
+            // Rejeição de negócio — não retente via fila, encaminhe para correção
+            $this->fail(
+                new \RuntimeException("Rejeição SEFAZ cStat={$result->status()}: {$result->motivo()}")
+            );
+            return;
+        }
+    }
+
+    public function failed(InfrastructureException $exception): void
+    {
+        logger()->critical('NF-e não autorizada após todas as tentativas do job', [
+            'error' => $exception->getMessage(),
+        ]);
+    }
+}
+```
+
+## Próximos passos
+
+<CardGroup cols={2}>
+  <Card title="Resultados de operações" icon="circle-check" href="/fiscal/resultados">
+    Entenda a anatomia do Result e como inspecionar sucesso, rejeição e falha técnica.
+  </Card>
+  <Card title="Rejeições SEFAZ" icon="triangle-exclamation" href="/fiscal/rejeicoes">
+    Interprete códigos cStat, diagnostique causas e reconstrua o Command corrigido.
+  </Card>
+</CardGroup>

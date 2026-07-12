@@ -1,0 +1,142 @@
+---
+title: "Registrar e consultar CIOT com o SUOT ANTT SDK"
+sidebarTitle: "CIOT"
+description: "Registre, consulte e encerre Códigos Identificadores de Operação de Transporte usando o SUOT ANTT SDK com tipagem total e o padrão Command/Handler/Result."
+---
+
+O CIOT (Código Identificador de Operação de Transporte) é um registro eletrônico obrigatório para determinadas operações de transporte rodoviário de cargas. Ele identifica a operação de transporte junto à ANTT e deve ser gerado antes do início do serviço quando aplicável. O SUOT ANTT SDK abstrai a comunicação com a ANTT e entrega o resultado em um objeto tipado, seguindo o padrão Command → Handler → Result.
+
+<Note>
+  A obrigatoriedade de emissão do CIOT depende das características da operação — valor do frete, tipo de contratação e categoria do transportador. O SDK não impõe regras de negócio: é responsabilidade da sua aplicação determinar quando o CIOT deve ser registrado.
+</Note>
+
+## Operações disponíveis
+
+| Operação | Status |
+|---|---|
+| Registrar CIOT | <Badge>Disponível</Badge> |
+| Consultar CIOT | <Badge>Disponível</Badge> |
+| Encerrar CIOT | <Badge variant="yellow">Em desenvolvimento</Badge> |
+
+## Registrar um CIOT
+
+Construa o comando com os dados da operação usando named arguments e Value Objects:
+
+```php
+<?php
+
+use Suot\Antt\Ciot\Command\RegistrarCiotCommand;
+use Suot\Antt\Ciot\ValueObject\DadosTransportador;
+use Suot\Antt\Ciot\ValueObject\DadosContratante;
+use Suot\Antt\Ciot\ValueObject\DadosCarga;
+use Suot\Antt\Ciot\ValueObject\ValorFrete;
+use Suot\Antt\Core\ValueObject\Cnpj;
+use Suot\Antt\Core\ValueObject\Cpf;
+
+$command = new RegistrarCiotCommand(
+    transportador: new DadosTransportador(
+        cnpj: new Cnpj('00.000.000/0001-00'),
+        rntrc: '00000000',
+    ),
+    contratante: new DadosContratante(
+        cnpj: new Cnpj('11.111.111/0001-11'),
+    ),
+    carga: new DadosCarga(
+        descricao: 'Eletrônicos',
+        pesoBrutoKg: 1500,
+        origemUf: 'SP',
+        destinoUf: 'RJ',
+    ),
+    valorFrete: new ValorFrete(
+        total: 250000, // centavos
+    ),
+);
+```
+
+Execute o comando e inspecione o resultado:
+
+```php
+<?php
+
+use Suot\Antt\Ciot\Handler\CiotHandler;
+use Suot\Antt\Core\Exception\InfrastructureException;
+
+$handler = new CiotHandler(config: $config);
+
+try {
+    $result = $handler->registrar(command: $command);
+
+    if ($result->isSuccess()) {
+        $ciot = $result->getData();
+
+        echo 'CIOT registrado: ' . $ciot->numeroCiot . PHP_EOL;
+        echo 'Data de registro: ' . $ciot->registradoEm->format('d/m/Y H:i:s') . PHP_EOL;
+    } else {
+        $rejeicao = $result->getRejection();
+
+        echo 'Rejeição: [' . $rejeicao->codigo . '] ' . $rejeicao->mensagem . PHP_EOL;
+    }
+} catch (InfrastructureException $e) {
+    // Falha técnica: conectividade, timeout, autenticação
+    echo 'Falha técnica: ' . $e->getMessage() . PHP_EOL;
+}
+```
+
+## Dados do Result de sucesso
+
+Quando `$result->isSuccess()` retorna `true`, o objeto retornado por `$result->getData()` contém:
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `numeroCiot` | `string` | Código CIOT gerado pela ANTT |
+| `registradoEm` | `DateTimeImmutable` | Data e hora do registro |
+| `situacao` | `string` | Situação atual do CIOT (ex.: `ATIVO`) |
+
+## Consultar um CIOT
+
+```php
+<?php
+
+use Suot\Antt\Ciot\Command\ConsultarCiotCommand;
+
+$command = new ConsultarCiotCommand(
+    numeroCiot: '000000000000000',
+);
+
+$result = $handler->consultar(command: $command);
+
+if ($result->isSuccess()) {
+    $dados = $result->getData();
+
+    echo 'CIOT: ' . $dados->numeroCiot . PHP_EOL;
+    echo 'Situação: ' . $dados->situacao . PHP_EOL;
+    echo 'Registrado em: ' . $dados->registradoEm->format('d/m/Y H:i:s') . PHP_EOL;
+}
+```
+
+## Encerrar um CIOT
+
+<Warning>
+  A operação de encerramento está **em desenvolvimento**. A interface abaixo representa o contrato planejado e pode sofrer alterações antes da disponibilização.
+</Warning>
+
+```php
+<?php
+
+use Suot\Antt\Ciot\Command\EncerrarCiotCommand;
+
+$command = new EncerrarCiotCommand(
+    numeroCiot: '000000000000000',
+    motivoEncerramento: 'Conclusão da operação de transporte',
+);
+
+$result = $handler->encerrar(command: $command);
+
+if ($result->isSuccess()) {
+    echo 'CIOT encerrado com sucesso.' . PHP_EOL;
+}
+```
+
+---
+
+Consulte a página de [Resultados](/antt/resultados) para entender o modelo completo de `Result`, rejeições esperadas e `InfrastructureException`.

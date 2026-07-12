@@ -1,0 +1,193 @@
+---
+title: "Emitir e autorizar CT-e com o SUOT Fiscal SDK"
+sidebarTitle: "CT-e"
+description: "Construa, autorize e consulte Conhecimentos de Transporte Eletrônico usando o SUOT Fiscal SDK com tipagem total e o padrão Command/Handler/Result."
+---
+
+O **CT-e (Conhecimento de Transporte Eletrônico)** é o documento fiscal obrigatório para operações de transporte de cargas no Brasil, emitido junto à SEFAZ. Com o SUOT Fiscal SDK você constrói um CT-e por meio de uma API PHP tipada — sem arrays anônimos, sem casting manual —, envia à SEFAZ através de um Handler dedicado e inspeciona o resultado por meio do padrão `Result`, que distingue com clareza autorizações, rejeições e falhas técnicas. Da ordem ao resultado.
+
+## Fluxo de emissão
+
+Todo CT-e segue exatamente quatro etapas dentro do SDK:
+
+<Steps>
+  <Step title="Montar os dados">
+    Reúna as informações do transporte — emitente, tomador, remetente, destinatário, carga e valores — usando Value Objects tipados (`Cnpj`, `ChaveCTe`, `Municipio`, `Peso`, etc.).
+  </Step>
+  <Step title="Construir o Command">
+    Use `CTeBuilder` com a interface fluente Step Builder para compor o `EmitirCTeCommand`. O objeto resultante é imutável e validado em tempo de construção.
+  </Step>
+  <Step title="Handler autoriza junto à SEFAZ">
+    Passe o Command para `EmitirCTeHandler::handle()`. O Handler assina o XML, conecta ao webservice da SEFAZ e aguarda o retorno de forma síncrona.
+  </Step>
+  <Step title="Inspecionar o Result">
+    O retorno é sempre um `EmitirCTeResult`. Verifique `isSuccess()` para confirmar a autorização ou inspecione `getRejeicao()` para tratar recusas da SEFAZ.
+  </Step>
+</Steps>
+
+## Construindo o Command
+
+O `CTeBuilder` segue o padrão **Step Builder** — cada método retorna a próxima etapa obrigatória da construção, eliminando estados inválidos em tempo de compilação. Named arguments tornam o código autodocumentado.
+
+```php
+<?php
+
+use Suot\Fiscal\CTe\Builder\CTeBuilder;
+use Suot\Fiscal\CTe\Command\EmitirCTeCommand;
+use Suot\Fiscal\CTe\Enum\ModeloCTe;
+use Suot\Fiscal\CTe\Enum\TipoServico;
+use Suot\Fiscal\CTe\Enum\ModalTransporte;
+use Suot\Fiscal\ValueObjects\Cnpj;
+use Suot\Fiscal\ValueObjects\Cpf;
+use Suot\Fiscal\ValueObjects\Municipio;
+use Suot\Fiscal\ValueObjects\Uf;
+use Suot\Fiscal\ValueObjects\Peso;
+use Suot\Fiscal\ValueObjects\Valor;
+use Suot\Fiscal\ValueObjects\NumeroCTe;
+
+$command = CTeBuilder::novo()
+    ->comModelo(ModeloCTe::CTe)
+    ->comTipoServico(TipoServico::Normal)
+    ->comModal(ModalTransporte::Rodoviario)
+    ->comNumero(NumeroCTe::from(1001))
+    ->comDataEmissao(new DateTimeImmutable('2025-06-15'))
+    ->comEmitente(
+        cnpj: Cnpj::from('12.345.678/0001-99'),
+        razaoSocial: 'Transportadora Exemplo Ltda',
+        uf: Uf::SP,
+    )
+    ->comTomador(
+        cnpj: Cnpj::from('98.765.432/0001-11'),
+        razaoSocial: 'Embarcadora Nacional S.A.',
+    )
+    ->comRemetente(
+        cnpj: Cnpj::from('11.222.333/0001-44'),
+        razaoSocial: 'Fornecedor Origem Ltda',
+        municipio: Municipio::from(codigoIbge: '3550308'), // São Paulo - SP
+    )
+    ->comDestinatario(
+        cnpj: Cnpj::from('55.666.777/0001-88'),
+        razaoSocial: 'Cliente Destino S.A.',
+        municipio: Municipio::from(codigoIbge: '3304557'), // Rio de Janeiro - RJ
+    )
+    ->comPercurso(
+        origem: Municipio::from(codigoIbge: '3550308'),
+        destino: Municipio::from(codigoIbge: '3304557'),
+    )
+    ->comCarga(
+        produto: 'Peças industriais',
+        codigoNcm: '84798990',
+        peso: Peso::bruto(quilos: 1_250.00),
+        valor: Valor::reais(centavos: 4_800_00),
+    )
+    ->comValoresPrestacao(
+        totalServico: Valor::reais(centavos: 38_000_00),
+        baseCalculo: Valor::reais(centavos: 38_000_00),
+    )
+    ->build(); // retorna EmitirCTeCommand (imutável)
+```
+
+<Note>
+  O `CTeBuilder` valida cada etapa ao avançar. Se um campo obrigatório estiver ausente ou um Value Object receber um dado inválido — como um CNPJ com dígito verificador errado — uma `\Suot\Fiscal\Exception\InvalidValueObjectException` é lançada antes que o Command seja criado.
+</Note>
+
+## Executando com o Handler
+
+Instancie `EmitirCTeHandler` com a configuração do ambiente (obtida via injeção de dependência ou manualmente) e passe o Command para `handle()`.
+
+```php
+<?php
+
+use Suot\Fiscal\CTe\Handler\EmitirCTeHandler;
+use Suot\Fiscal\CTe\Result\EmitirCTeResult;
+use Suot\Fiscal\Exception\InfrastructureException;
+
+// $handler é injetado via DI (Laravel Bridge) ou instanciado manualmente
+/** @var EmitirCTeHandler $handler */
+
+try {
+    $result = $handler->handle($command);
+} catch (InfrastructureException $e) {
+    // Falha técnica: timeout, certificado inválido, webservice indisponível, etc.
+    // Não é uma rejeição da SEFAZ — é um erro de infraestrutura.
+    logger()->critical('Falha ao comunicar com a SEFAZ', [
+        'codigo' => $e->getCode(),
+        'mensagem' => $e->getMessage(),
+    ]);
+    throw $e;
+}
+
+if ($result->isSuccess()) {
+    $chave    = $result->getChave();       // ChaveCTe (44 dígitos)
+    $protocolo = $result->getProtocolo();  // Protocolo de autorização
+    $xmlAutorizado = $result->getXmlAutorizado(); // XML com nProt inserido
+
+    logger()->info('CT-e autorizado', [
+        'chave'     => (string) $chave,
+        'protocolo' => (string) $protocolo,
+    ]);
+} else {
+    $rejeicao = $result->getRejeicao();
+
+    logger()->warning('CT-e rejeitado pela SEFAZ', [
+        'codigo'      => $rejeicao->getCodigo(),
+        'descricao'   => $rejeicao->getDescricao(),
+        'corrigivel'  => $rejeicao->isCorrigivel(),
+    ]);
+}
+```
+
+## Inspecionando o Result
+
+Um `EmitirCTeResult` com `isSuccess() === true` expõe:
+
+| Método | Tipo de retorno | Descrição |
+|---|---|---|
+| `getChave()` | `ChaveCTe` | Chave de acesso de 44 dígitos |
+| `getProtocolo()` | `Protocolo` | Número do protocolo de autorização da SEFAZ |
+| `getXmlAutorizado()` | `string` | XML do CT-e com o `nProt` inserido pelo fisco |
+| `getXmlEnvio()` | `string` | XML enviado (útil para auditoria) |
+| `getDataAutorizacao()` | `DateTimeImmutable` | Data e hora do processamento na SEFAZ |
+| `getMetadata()` | `ResultMetadata` | Ambiente, autorizador, tempo de resposta |
+
+### Rejeições vs. falhas técnicas
+
+<CardGroup cols={2}>
+  <Card title="Rejeição (Result)" icon="circle-xmark">
+    A SEFAZ processou a requisição e recusou o documento. O `Result` é retornado normalmente com `isSuccess() === false`. Consulte `getRejeicao()` para obter código, descrição e se é corrigível.
+  </Card>
+  <Card title="Falha técnica (InfrastructureException)" icon="triangle-exclamation">
+    Timeout de conexão, certificado expirado, resposta malformada ou webservice fora do ar. Uma exceção é lançada — não há `Result`. Trate no bloco `catch`.
+  </Card>
+</CardGroup>
+
+<Tip>
+  Veja a lista completa de códigos de rejeição da SEFAZ e como tratá-los em [Rejeições](/fiscal/rejeicoes), e a anatomia detalhada do `Result` em [Resultados](/fiscal/resultados).
+</Tip>
+
+## Cancelamento e inutilização
+
+O cancelamento e a inutilização de faixas de numeração são operações separadas do fluxo de emissão, com seus próprios Commands e Handlers.
+
+<Info>
+  **Em desenvolvimento** — `CancelarCTeCommand` e `InutilizarCTeCommand` estarão disponíveis em versão próxima. Acompanhe as [notas de atualização](/suporte/atualizacoes).
+</Info>
+
+## Consulta de CT-e
+
+Para consultar a situação de um CT-e já emitido junto à SEFAZ, utilize `ConsultarCTeCommand` com a `ChaveCTe` do documento.
+
+<Info>
+  **Em desenvolvimento** — `ConsultarCTeHandler` estará disponível em breve. A consulta retornará um `ConsultarCTeResult` com situação, protocolo e XML mais recente.
+</Info>
+
+## Próximos passos
+
+<CardGroup cols={2}>
+  <Card title="Resultados" icon="circle-check" href="/fiscal/resultados">
+    Anatomia completa do padrão Result: campos, status e metadados de cada operação.
+  </Card>
+  <Card title="Rejeições" icon="circle-xmark" href="/fiscal/rejeicoes">
+    Lista de códigos de rejeição da SEFAZ, classificação e estratégias de tratamento.
+  </Card>
+</CardGroup>

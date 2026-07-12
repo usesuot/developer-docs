@@ -1,30 +1,12 @@
 {
-  "$schema": "https://mintlify.com/docs.json",
+  "projectType": "sdk-library",
+  "projectName": "SUOT para Desenvolvedores",
+  "projectDescription": "Infraestrutura PHP para construir software de transporte no Brasil — SDKs tipados para documentos fiscais (CT-e, MDF-e) e obrigações regulatórias (CIOT, RNTRC) com suporte a Laravel, PHPStan máximo e Developer Experience pensada para IDEs e agentes de IA.",
   "theme": "luma",
-  "name": "SUOT Developers",
-  "colors": {
-    "primary": "#1be49c",
-    "light": "#0c8c5c",
-    "dark": "#0c0c0c"
-  },
-  "favicon": "https://media.brand.dev/483ee27f-08fb-4d32-842d-86b4c40f9fb4.png",
-  "logo": {
-    "light": "https://media.brand.dev/07fcb57b-76a5-49f6-abdb-740da69c791f.svg",
-    "dark": "https://media.brand.dev/07fcb57b-76a5-49f6-abdb-740da69c791f.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Developer Portal",
-        "href": "https://developers.suot.dev"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Começar integração",
-      "href": "https://developers.suot.dev"
-    }
-  },
+  "primaryColor": "#1be49c",
+  "lightColor": "#0c8c5c",
+  "darkColor": "#0c0c0c",
+  "locale": "pt-BR",
   "navigation": {
     "tabs": [
       {
@@ -149,19 +131,33 @@
       }
     ]
   },
-  "footer": {
-    "socials": {
-      "github": "https://github.com/usesuot"
-    }
-  },
-  "contextual": {
-    "options": [
-      "copy",
-      "view",
-      "chatgpt",
-      "claude",
-      "cursor",
-      "vscode"
-    ]
-  }
+  "keyFeatures": [
+    "SDKs tipados para CT-e, MDF-e, CIOT e RNTRC com PHP 8.4+ e Composer 2",
+    "PHPStan máximo — zero métodos mágicos, autocomplete completo em IDEs",
+    "Value Objects imutáveis para todos os campos fiscais e regulatórios",
+    "Fluent Interface com Step Builder leve para montagem de documentos",
+    "Padrão CQRS: Command / Handler / Result em todas as operações",
+    "Laravel Bridge opcional (framework-agnostic por padrão)",
+    "PHPDoc em pt-BR com exemplos executáveis",
+    "Retry Policy nativa para falhas técnicas de infraestrutura",
+    "Suporte a agentes de IA via estrutura de tipos explícita sem magic methods",
+    "Ecossistema integrado: docs, developer portal, registry Composer privado",
+    "Modelo de licenciamento por organização sem kill switch no runtime",
+    "Roadmap para CT-e OS, BP-e, PEF, vale-pedágio e MONITRIIP"
+  ],
+  "publicApiSurface": [
+    "SUOT Fiscal SDK for PHP — pacotes: suot/fiscal-core, suot/fiscal-sefaz, suot/fiscal-cte, suot/fiscal-mdfe, suot/fiscal-laravel",
+    "SUOT ANTT SDK for PHP — pacotes: suot/antt-core, suot/antt-ciot, suot/antt-rntrc, suot/antt-laravel",
+    "Command — objeto imutável que representa uma intenção de operação",
+    "Handler — executa o Command contra o autorizador/serviço",
+    "Result — encapsula sucesso, rejeição ou falha técnica",
+    "InfrastructureException — lançada em falhas de infraestrutura (timeout, HTTP 5xx)",
+    "RetryPolicy — política configurável de retentativas para falhas transitórias",
+    "Value Objects — CNPJ, CPF, ChaveCTe, ChaveMDFe, Protocolo, etc.",
+    "LaravelServiceProvider (Fiscal) — binds e configuração via config/suot-fiscal.php",
+    "LaravelServiceProvider (ANTT) — binds e configuração via config/suot-antt.php",
+    "Enums para status SEFAZ, tipo de documento, modal de transporte, etc.",
+    "developers.suot.dev — portal de organização, licenças e tokens Composer",
+    "packages.suot.dev — registry Composer privado autenticado por token"
+  ]
 }

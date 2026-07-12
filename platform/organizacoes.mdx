@@ -1,0 +1,76 @@
+---
+title: "Organizações no SUOT Developer Portal"
+sidebarTitle: "Organizações"
+description: "Gerencie sua organização no Developer Portal da SUOT: crie uma org, adicione membros e associe licenças para liberar o acesso aos SDKs."
+---
+
+No modelo da SUOT, toda relação comercial e técnica é ancorada em uma **organização**. É a organização — e não o desenvolvedor individual — que detém a licença, recebe acesso ao registry Composer privado e é responsável pelos tokens emitidos aos seus membros. Entender o papel da organização é o primeiro passo para configurar o ambiente de desenvolvimento corretamente.
+
+## O que é uma organização
+
+Uma organização no Developer Portal da SUOT representa a empresa ou time que vai consumir os SDKs. Ela é a unidade de licenciamento: quando uma licença do Fiscal SDK ou do ANTT SDK é adquirida, ela é vinculada à organização, não a um desenvolvedor específico.
+
+A partir da organização você pode:
+
+- Visualizar as licenças ativas e seus produtos associados
+- Adicionar e remover membros da equipe de desenvolvimento
+- Emitir tokens Composer para desenvolvedores individuais e para pipelines de CI/CD
+- Acompanhar o status das assinaturas vinculadas
+
+## Criar uma organização
+
+<Steps>
+  <Step title="Acesse o Developer Portal">
+    Acesse [developers.suot.dev](https://developers.suot.dev) e faça login com sua conta. Se ainda não tiver uma conta, crie uma diretamente no portal.
+  </Step>
+  <Step title="Crie uma nova organização">
+    Na tela inicial do portal, selecione a opção para criar uma nova organização. Você pode ter mais de uma organização associada à mesma conta — útil para separar ambientes de clientes distintos ou projetos independentes.
+  </Step>
+  <Step title="Preencha os dados da organização">
+    Informe o **CNPJ** da empresa titular e o **nome** da organização. O CNPJ é utilizado para vincular a organização à licença comercial. Certifique-se de usar o CNPJ correto — ele é a chave de associação com os contratos SUOT.
+  </Step>
+</Steps>
+
+<Note>
+  A **organização** é a titular da licença. Se o desenvolvedor que criou a organização sair da empresa, a licença permanece com a organização — não com o indivíduo. Recomendamos que pelo menos dois membros tenham papel administrativo para garantir continuidade de acesso.
+</Note>
+
+## Membros
+
+Após criar a organização, você pode adicionar outros desenvolvedores como membros. Cada membro possui:
+
+- Acesso ao Developer Portal no contexto daquela organização
+- Capacidade de emitir tokens Composer próprios, vinculados à licença da organização
+- Um papel (*role*) que determina o nível de permissão dentro do portal
+
+Os papéis disponíveis são gerenciados pelo portal — consulte a interface para ver as opções atuais de permissão. Em geral, papéis administrativos permitem gerenciar membros e licenças; papéis de desenvolvedor permitem apenas emitir e revogar tokens próprios.
+
+<Info>
+  Tokens Composer são pessoais ou de serviço — cada desenvolvedor emite o seu. Um token pertence ao membro que o gerou, não à organização como um todo. Para pipelines de CI/CD, crie um token de serviço dedicado. Veja mais em [Tokens Composer](/platform/tokens-composer).
+</Info>
+
+## Relação com licenças
+
+A licença é o que autoriza a organização a baixar pacotes do registry privado `packages.suot.dev`. Sem uma licença ativa associada à organização, os tokens emitidos pelos membros não terão acesso aos pacotes dos SDKs.
+
+O fluxo completo é:
+
+1. A organização adquire uma licença (Fiscal SDK, ANTT SDK ou ambos)
+2. A licença é vinculada à organização no Developer Portal
+3. Membros da organização emitem tokens Composer
+4. Os tokens autenticam requisições ao `packages.suot.dev` com os privilégios da licença da organização
+
+<Note>
+  A **organização é a titular da licença** — não o desenvolvedor individual. Membros adicionados à organização herdam os privilégios de acesso definidos pela licença, mas não se tornam titulares. Para detalhes sobre vencimento, renovação e o que acontece quando a licença expira, consulte [Licenças](/platform/licencas).
+</Note>
+
+## Próximos passos
+
+<CardGroup cols={2}>
+  <Card title="Licenças" icon="id-card" href="/platform/licencas">
+    Entenda o modelo de licenciamento, a diferença entre licença e assinatura, e o que acontece quando uma licença vence.
+  </Card>
+  <Card title="Tokens Composer" icon="key" href="/platform/tokens-composer">
+    Gere tokens para desenvolvedores e pipelines de CI/CD e saiba como utilizá-los com segurança.
+  </Card>
+</CardGroup>

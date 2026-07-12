@@ -1,0 +1,74 @@
+---
+title: "SUOT ANTT SDK — infraestrutura regulatória PHP para transporte"
+sidebarTitle: "Visão Geral"
+description: "Conheça o SUOT ANTT SDK for PHP: CIOT, RNTRC e obrigações regulatórias junto à ANTT com tipagem total, PHPStan máximo e suporte a Laravel."
+---
+
+O SUOT ANTT SDK é a camada de infraestrutura regulatória PHP para operações sujeitas à Agência Nacional de Transportes Terrestres. Ele vai além do CIOT: cobre o ciclo completo de obrigações junto à ANTT — do registro de operações de transporte à consulta de transportadores habilitados — entregando tipagem total, análise estática máxima e uma experiência de desenvolvimento previsível, independentemente do framework utilizado.
+
+## Obrigações disponíveis
+
+A tabela abaixo relaciona as obrigações regulatórias cobertas ou planejadas pelo SDK:
+
+| Obrigação | Pacote | Status |
+|---|---|---|
+| CIOT | `suot/antt-ciot` | <Badge>Disponível</Badge> |
+| RNTRC | `suot/antt-rntrc` | <Badge>Disponível</Badge> |
+| PEF | — | <Badge variant="yellow">Em desenvolvimento</Badge> |
+| Vale-pedágio | — | <Badge variant="gray">Roadmap</Badge> |
+| Piso mínimo de frete | — | <Badge variant="gray">Roadmap</Badge> |
+| MONITRIIP | — | <Badge variant="gray">Roadmap</Badge> |
+| Autorizações de passageiros | — | <Badge variant="gray">Roadmap</Badge> |
+
+## Pacotes disponíveis
+
+O SDK é distribuído em pacotes independentes para que você instale apenas o que precisa:
+
+| Pacote | Responsabilidade |
+|---|---|
+| `suot/antt-core` | Contratos, Value Objects e infraestrutura compartilhada |
+| `suot/antt-ciot` | Registro, consulta e encerramento de CIOT |
+| `suot/antt-rntrc` | Consulta de situação cadastral de transportadores |
+| `suot/antt-laravel` | Bridge opcional para Laravel (ServiceProvider, DI, config) |
+
+`suot/antt-core` é a única dependência obrigatória — os demais pacotes dependem dele automaticamente via Composer.
+
+## Developer Experience
+
+O SUOT ANTT SDK adota o mesmo padrão de qualidade do SUOT Fiscal SDK:
+
+- **Tipagem total** — nenhum parâmetro do tipo `mixed` ou `array` sem forma definida
+- **PHPStan nível máximo** — toda a base de código é verificada no nível mais estrito disponível
+- **Sem métodos mágicos** — comportamento explícito em cada classe; o que não está declarado não existe
+- **Named arguments** — todos os comandos e Value Objects aceitam argumentos nomeados para clareza na chamada
+- **Value Objects** — CNPJ, código CIOT, número RNTRC e demais primitivos são representados por objetos com validação interna
+- **PHPDoc em pt-BR** — documentação inline escrita em português, sem ambiguidade conceitual
+- **Padrão CQRS** — Command → Handler → Result; sem side effects ocultos, sem estado global
+
+<Note>
+O SUOT ANTT SDK e o SUOT Fiscal SDK são **independentes**. Não existe pacote agregador entre eles. Instale apenas os pacotes que a sua aplicação utiliza.
+</Note>
+
+## Requisitos
+
+Antes de instalar, confirme que o seu ambiente atende aos requisitos mínimos:
+
+- **PHP 8.4 ou superior** — o SDK utiliza recursos de tipagem introduzidos no PHP 8.4
+- **Composer 2** — necessário para resolução de dependências e acesso ao registry privado
+- **Licença SUOT ativa** — necessária para autenticação no registry `packages.suot.dev`
+
+Consulte a página de [instalação](/antt/instalacao) para o passo a passo completo de configuração do ambiente.
+
+## Próximos passos
+
+<CardGroup cols={3}>
+  <Card title="Instalação" icon="download" href="/antt/instalacao">
+    Configure o registry, autentique e instale os pacotes do ANTT SDK via Composer.
+  </Card>
+  <Card title="CIOT" icon="file-certificate" href="/antt/ciot">
+    Registre, consulte e encerre Códigos Identificadores de Operação de Transporte.
+  </Card>
+  <Card title="RNTRC" icon="id-card" href="/antt/rntrc">
+    Consulte a situação cadastral de transportadores rodoviários de cargas.
+  </Card>
+</CardGroup>

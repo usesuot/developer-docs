@@ -1,0 +1,72 @@
+---
+title: "Ecossistema SUOT para desenvolvedores de transporte"
+sidebarTitle: "Ecossistema"
+description: "Conheça o ecossistema SUOT: documentação, Developer Portal, registry Composer privado e os dois SDKs independentes para transporte no Brasil."
+---
+
+O ecossistema SUOT reúne os recursos que um desenvolvedor precisa para construir software de transporte no Brasil: documentação pública, um portal de gestão de organização e licenças, um registry Composer privado para distribuição dos pacotes e dois SDKs PHP independentes que cobrem obrigações fiscais e regulatórias. Cada componente tem uma responsabilidade bem definida — você usa apenas o que a sua aplicação precisa.
+
+## Os quatro componentes
+
+<CardGroup cols={2}>
+  <Card title="docs.suot.dev" icon="book-open" href="https://docs.suot.dev">
+    Documentação pública para desenvolvedores. Guias de instalação, referência de API, conceitos de arquitetura, quickstarts e guias de homologação e produção. Você está aqui agora.
+  </Card>
+  <Card title="developers.suot.dev" icon="building-columns" href="https://developers.suot.dev">
+    Developer Portal da SUOT. Crie e gerencie sua organização, visualize licenças ativas, emita e revogue tokens Composer para membros e pipelines de CI/CD.
+  </Card>
+  <Card title="packages.suot.dev" icon="box-archive" href="https://packages.suot.dev">
+    Registry Composer privado da SUOT. Hospeda todos os pacotes dos SDKs. O acesso é autenticado por token Composer emitido no Developer Portal — não há pacotes públicos no Packagist.
+  </Card>
+  <Card title="SDKs PHP" icon="code" href="/introducao/quickstart">
+    Dois SDKs independentes instalados via Composer: **Fiscal SDK** para documentos fiscais de transporte e **ANTT SDK** para obrigações regulatórias. Sem acoplamento entre eles.
+  </Card>
+</CardGroup>
+
+<Note>
+  O **admin.suot.dev** é o backoffice interno da SUOT e não faz parte da jornada do desenvolvedor. Ele não está documentado aqui e não é acessível a clientes ou parceiros.
+</Note>
+
+## Dois SDKs independentes
+
+A SUOT oferece dois SDKs com escopos completamente separados. Não existe um pacote agregador que instale ambos — você declara apenas as dependências que a sua aplicação realmente utiliza.
+
+| SDK | Escopo | Pacotes principais |
+|-----|--------|--------------------|
+| **SUOT Fiscal SDK para PHP** | Documentos fiscais de transporte: CT-e, MDF-e | `suot/fiscal-core`, `suot/fiscal-sefaz`, `suot/fiscal-cte`, `suot/fiscal-mdfe`, `suot/fiscal-laravel` |
+| **SUOT ANTT SDK para PHP** | Obrigações regulatórias ANTT: CIOT, RNTRC | `suot/antt-core`, `suot/antt-ciot`, `suot/antt-rntrc`, `suot/antt-laravel` |
+
+Você pode instalar somente o Fiscal SDK, somente o ANTT SDK ou ambos no mesmo projeto. Eles compartilham a mesma convenção de Command / Handler / Result e a mesma filosofia de tipagem, mas as dependências são inteiramente distintas.
+
+**Requisitos do Fiscal SDK:** PHP 8.4+ e Composer 2. O Laravel Bridge (`suot/fiscal-laravel`) é opcional.
+
+## Sua aplicação coordena
+
+Os SDKs da SUOT executam operações — emitir documentos, consultar registros, enviar lotes. A lógica de negócio que decide *quando* e *como* chamar essas operações pertence à sua aplicação hospedeira. A SUOT não impõe uma camada de orquestração: você chama os handlers diretamente.
+
+```
+Sua aplicação → [Laravel Bridge opcional] → SDK → SEFAZ / Serviço regulatório
+```
+
+O Laravel Bridge (`suot/fiscal-laravel` ou `suot/antt-laravel`) é um facilitador de injeção de dependência e configuração via `config/` — não é obrigatório. Em qualquer projeto PHP 8.4+ você instancia os handlers diretamente.
+
+<Note>
+  A coordenação de fluxos complexos — como emitir um CT-e e depois fechar um MDF-e — é responsabilidade da sua aplicação. O SDK garante que cada operação individual seja executada com tipagem total e retorno previsível.
+</Note>
+
+## O que é SOT?
+
+A SUOT propõe a categoria **SOT — Sistema de Ordens de Transporte**. Um SOT é o sistema que governa o ciclo de vida das ordens de transporte: da criação da ordem à entrega, passando por documentos fiscais, obrigações regulatórias e rastreabilidade.
+
+Diferente de um ERP genérico ou de um simples emissor fiscal, um SOT trata o transporte como domínio central — não como módulo periférico. Os SDKs da SUOT são a infraestrutura PHP para construir esse tipo de sistema.
+
+> **Da ordem ao resultado.** — Tagline SUOT
+
+<CardGroup cols={2}>
+  <Card title="Quickstart — primeiro CT-e" icon="rocket" href="/introducao/quickstart">
+    Instale o Fiscal SDK e autorize seu primeiro CT-e de teste em menos de 15 minutos.
+  </Card>
+  <Card title="Developer Platform" icon="building" href="/platform/organizacoes">
+    Crie sua organização, obtenha sua licença e gere tokens Composer.
+  </Card>
+</CardGroup>

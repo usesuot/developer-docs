@@ -1,0 +1,92 @@
+---
+title: "Suporte e contato SUOT para desenvolvedores"
+sidebarTitle: "Contato"
+description: "Encontre os canais de suporte técnico da SUOT: Developer Portal para licenças e tokens, documentação para integração e contato para dúvidas sobre os SDKs."
+---
+
+A SUOT oferece suporte técnico a organizações licenciadas por meio do Developer Portal. Se você está integrando o SUOT Fiscal SDK ou o SUOT ANTT SDK e encontrou um problema que não foi resolvido pela documentação, esta página descreve como acionar o suporte da forma mais eficiente — incluindo o que verificar antes de abrir uma solicitação e quais informações incluir para agilizar o atendimento.
+
+---
+
+## Canais de suporte
+
+<CardGroup cols={2}>
+  <Card title="Developer Portal" icon="circle-user" href="https://developers.suot.dev">
+    Gerencie sua organização, licenças, tokens de acesso ao Composer e abra solicitações de suporte técnico. Acesso exclusivo para organizações licenciadas.
+  </Card>
+  <Card title="Documentação" icon="book-open" href="https://docs.suot.dev">
+    Referência completa de uso dos SDKs: guias de integração, referência de `Command`, `Handler`, `Result`, `Value Object` e conceitos fiscais e regulatórios.
+  </Card>
+</CardGroup>
+
+---
+
+## Antes de abrir suporte
+
+Antes de acionar o suporte técnico, percorra este checklist. A maioria dos problemas comuns é resolvida com essas verificações — e se precisar abrir uma solicitação, elas já terão sido feitas, agilizando o diagnóstico.
+
+- [ ] Li a documentação da operação que estou integrando (CT-e, MDF-e, CIOT, RNTRC)
+- [ ] Verifiquei o `cStat` e o `xMotivo` do `Result` retornado pelo `Handler`
+- [ ] Reproduzi o problema em homologação antes de afirmar que ocorre em produção
+- [ ] Verifiquei os logs de `InfrastructureException` para descartar falhas de infraestrutura (timeout, certificado, conectividade)
+- [ ] Confirmei que a licença da organização está ativa no [Developer Portal](https://developers.suot.dev)
+
+<Tip>
+Muitas rejeições do SEFAZ e da ANTT são totalmente descritas no `xMotivo` do `Result`. Antes de abrir suporte, consulte o [Glossário](/suporte/glossario) para entender o significado dos códigos `cStat` mais comuns.
+</Tip>
+
+---
+
+## O que incluir em uma solicitação de suporte
+
+Uma solicitação bem estruturada reduz significativamente o tempo de resolução. Inclua sempre:
+
+<Steps>
+  <Step title="Versão do SDK">
+    Execute o comando abaixo e inclua a saída na solicitação:
+
+    ```bash
+    composer show suot/fiscal-core
+    # ou, para o ANTT SDK:
+    composer show suot/antt-core
+    ```
+  </Step>
+  <Step title="Ambiente">
+    Informe se o problema ocorre em **homologação** ou **produção**. Problemas em produção têm prioridade diferenciada.
+  </Step>
+  <Step title="cStat e xMotivo">
+    Se a operação chegou ao SEFAZ ou à ANTT e foi rejeitada, inclua o `cStat` e o `xMotivo` retornados no `Result`:
+
+    ```php
+    $cStat   = $result->cStat();
+    $xMotivo = $result->xMotivo();
+    ```
+  </Step>
+  <Step title="Stacktrace de InfrastructureException">
+    Se o problema é uma `InfrastructureException`, inclua o stacktrace completo — **removendo dados sensíveis** (certificados, senhas, tokens). O stacktrace é essencial para diagnóstico de falhas de infraestrutura.
+  </Step>
+  <Step title="Versão do PHP">
+    Informe a versão do PHP em uso:
+
+    ```bash
+    php --version
+    ```
+  </Step>
+  <Step title="Versão do Laravel (se aplicável)">
+    Se estiver usando o Laravel Bridge (`suot/fiscal-laravel` ou `suot/antt-laravel`), informe também a versão do Laravel:
+
+    ```bash
+    php artisan --version
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+**Nunca compartilhe** certificados digitais (A1 ou A3), senhas, chaves privadas ou tokens de acesso ao Composer em solicitações de suporte — seja por e-mail, portal ou qualquer outro canal. Esses dados não são necessários para diagnóstico e sua exposição representa risco de segurança.
+</Warning>
+
+---
+
+## Comunidade
+
+A SUOT está desenvolvendo canais de comunidade para que desenvolvedores possam trocar experiências, tirar dúvidas e acompanhar discussões sobre integrações fiscais e regulatórias com os SDKs. Fique atento ao [Developer Portal](https://developers.suot.dev) para novidades sobre esses canais.

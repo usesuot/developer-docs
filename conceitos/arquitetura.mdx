@@ -1,0 +1,189 @@
+---
+title: "Arquitetura dos SDKs SUOT — Command, Handler e Result"
+sidebarTitle: "Arquitetura"
+description: "Entenda a arquitetura dos SDKs SUOT baseada em CQRS: Command imutável, Handler que executa a operação e Result tipado que encapsula o resultado."
+---
+
+Os SDKs SUOT são projetados em torno dos princípios de CQRS adaptados para operações fiscais e regulatórias. Independentemente do SDK — fiscal ou de transporte —, toda operação segue o mesmo fluxo: um **Command** declara a intenção, um **Handler** executa a operação contra o serviço externo e um **Result** tipado encapsula o que aconteceu. Esse padrão garante previsibilidade, rastreabilidade e testabilidade em cada ponto da integração.
+
+## Visão geral do fluxo
+
+O fluxo completo de uma operação nos SDKs SUOT pode ser visualizado assim:
+
+```
+Aplicação
+    │
+    ▼
+ Command          ← intenção imutável, construída com Value Objects
+    │
+    ▼
+ Handler          ← recebe o Command, chama o serviço externo
+    │
+    ▼
+[SEFAZ / ANTT]    ← serviço externo (SEFAZ, ANTT-RNTRC, etc.)
+    │
+    ▼
+  Result          ← encapsula o resultado; isSuccess() ou isRejected()
+    │
+    ▼
+ Aplicação        ← decide o que fazer com base no resultado
+```
+
+| Componente | Responsabilidade |
+|---|---|
+| **Command** | Declarar a intenção de forma imutável. Não executa nada por si mesmo. |
+| **Handler** | Receber o Command, chamar o serviço externo e devolver um Result. |
+| **Result** | Encapsular o resultado — sucesso ou rejeição — sem efeitos colaterais na leitura. |
+
+<Note>
+  A aplicação host é sempre responsável por coordenar as obrigações fiscais e regulatórias. Os SDKs SUOT apenas executam operações individuais — não orquestram fluxos de negócio.
+</Note>
+
+## Command
+
+Um **Command** é um objeto imutável que representa uma *intenção*, não a execução da operação. Ele carrega todos os dados necessários para que o Handler realize o trabalho, mas não sabe como fazê-lo.
+
+Características principais:
+
+- Construído com **named arguments** e **Value Objects** validados
+- **Imutável** após a construção — nenhuma propriedade pode ser alterada
+- **Não pode ser executado diretamente** — precisa ser passado a um Handler
+- Completamente compreensível por IDEs e agentes de IA via PHPDoc e tipos
+
+```php
+<?php
+
+use Suot\Fiscal\CteAutorizacao\CteAutorizacaoCommand;
+use Suot\Fiscal\ValueObjects\Cnpj;
+use Suot\Fiscal\ValueObjects\ChaveCTe;
+
+// O Command declara a intenção de autorizar um CT-e.
+// Nenhuma operação de rede acontece aqui.
+$command = new CteAutorizacaoCommand(
+    emitente: new Cnpj('12345678000195'),
+    chave: new ChaveCTe('35240112345678000195570010000000011000000014'),
+    xml: $xmlAssinado,
+);
+```
+
+<Tip>
+  Como o Command é imutável e não realiza I/O, você pode construí-lo, inspecioná-lo, serializá-lo para logs e passá-lo para qualquer Handler sem efeitos colaterais.
+</Tip>
+
+## Handler
+
+O **Handler** é o executor. Ele recebe um Command, realiza a chamada ao serviço externo (SEFAZ, ANTT etc.) e devolve um Result. O Handler não lança exceções para rejeições esperadas — apenas para falhas de infraestrutura.
+
+Regras do Handler:
+
+- Recebe exatamente um tipo de Command
+- Devolve sempre um Result tipado
+- **Não lança exceção** para respostas de negócio (rejeição, duplicidade, etc.) — isso é representado no Result
+- Lança `InfrastructureException` apenas para falhas técnicas: timeout, HTTP 5xx, conectividade
+
+```php
+<?php
+
+use Suot\Fiscal\CteAutorizacao\CteAutorizacaoHandler;
+use Suot\Fiscal\CteAutorizacao\CteAutorizacaoCommand;
+use Suot\Fiscal\Exceptions\InfrastructureException;
+
+$handler = new CteAutorizacaoHandler(
+    credentials: $credentials,
+    environment: $environment,
+);
+
+try {
+    $result = $handler->handle(command: $command);
+} catch (InfrastructureException $e) {
+    // Falha técnica: timeout, serviço indisponível, erro de rede.
+    // A aplicação deve decidir se retenta ou registra o incidente.
+    $logger->critical('Falha de infraestrutura ao autorizar CT-e', [
+        'exception' => $e->getMessage(),
+    ]);
+}
+```
+
+## Result
+
+O **Result** encapsula o resultado de uma operação. Ele é imutável — ler suas propriedades não produz efeitos colaterais. O estado de um Result é sempre um de dois:
+
+| Estado | Método | Significado |
+|---|---|---|
+| Sucesso | `isSuccess()` | A operação foi aceita pelo serviço externo |
+| Rejeição | `isRejected()` | A operação foi recusada por motivo de negócio |
+
+`InfrastructureException` **não é um estado do Result** — é uma exceção lançada pelo Handler antes que um Result possa ser criado.
+
+```php
+<?php
+
+$result = $handler->handle(command: $command);
+
+if ($result->isSuccess()) {
+    // Operação autorizada. O protocolo está disponível no Result.
+    $protocolo = $result->protocolo();
+    $logger->info('CT-e autorizado', ['protocolo' => (string) $protocolo]);
+}
+
+if ($result->isRejected()) {
+    // Rejeição de negócio — ex.: dado inconsistente, chave duplicada.
+    $motivo = $result->motivoRejeicao();
+    $codigo = $result->codigoRejeicao();
+    $logger->warning('CT-e rejeitado', [
+        'codigo'  => $codigo,
+        'motivo'  => $motivo,
+    ]);
+}
+```
+
+<Note>
+  Um Result rejeitado **não é um erro** — é uma resposta legítima do serviço. A aplicação host deve tratar rejeições como parte do fluxo normal de negócio, não como exceções.
+</Note>
+
+## Por que esse padrão?
+
+O fluxo Command → Handler → Result foi escolhido por razões práticas que impactam diretamente a qualidade do software que você escreve:
+
+**Previsibilidade** — toda operação tem a mesma forma. Ao aprender o padrão uma vez, você sabe como interagir com qualquer SDK SUOT.
+
+**Testabilidade** — o Handler pode ser substituído por um mock nos testes unitários. Você testa a lógica da sua aplicação sem precisar chamar SEFAZ ou ANTT. O Result pode ser construído diretamente no teste para simular qualquer cenário.
+
+**Autocomplete e PHPStan** — Commands e Results são classes concretas e totalmente tipadas. Nenhuma array mágica, nenhuma string de chave genérica. O PHPStan ao nível máximo e o servidor de linguagem PHP da sua IDE entendem cada propriedade.
+
+**IA-readiness** — agentes de IA (GitHub Copilot, Cursor, etc.) conseguem sugerir código correto porque os tipos são explícitos e o PHPDoc está em português brasileiro.
+
+**Separação de responsabilidades** — a aplicação host decide *quando* e *por que* chamar uma operação; o SDK decide *como* executá-la. Essa separação mantém a lógica de negócio fora do SDK e o SDK fora da lógica de negócio.
+
+## Independência dos SDKs
+
+Os SDKs SUOT são **independentes entre si**. O SDK fiscal não conhece o SDK de transporte e vice-versa. A aplicação host é responsável por coordenar os dois quando uma operação exigir dados de ambos.
+
+```
+Aplicação host
+├── SDK Fiscal     → CT-e, MDF-e, NF-e (SEFAZ)
+└── SDK ANTT       → RNTRC, MDF-e de transporte (ANTT)
+```
+
+Essa independência significa que você pode adotar um SDK sem o outro, atualizar versões de forma isolada e testar cada integração separadamente.
+
+---
+
+## Próximos passos
+
+<CardGroup cols={2}>
+  <Card
+    title="Value Objects"
+    icon="circle-dot"
+    href="/conceitos/value-objects"
+  >
+    Entenda como os campos fiscais são representados com tipagem forte e validação imbutida.
+  </Card>
+  <Card
+    title="Padrão CQRS"
+    icon="arrows-split-up-and-left"
+    href="/conceitos/cqrs"
+  >
+    Veja como Commands, Queries e Results se encaixam no padrão CQRS dos SDKs SUOT.
+  </Card>
+</CardGroup>

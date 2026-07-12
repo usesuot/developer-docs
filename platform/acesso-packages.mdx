@@ -1,0 +1,109 @@
+---
+title: "Acessar o registry Composer privado da SUOT"
+sidebarTitle: "Registry Composer"
+description: "Configure o packages.suot.dev como repositório Composer autenticado e instale os SDKs SUOT no seu projeto PHP ou pipeline de CI/CD."
+---
+
+Os SDKs da SUOT são distribuídos exclusivamente pelo registry Composer privado em `packages.suot.dev`. Não há pacotes `suot/*` publicados no Packagist. Para instalar o Fiscal SDK, o ANTT SDK ou qualquer pacote da SUOT, você precisa configurar o `packages.suot.dev` como repositório no `composer.json` do seu projeto e autenticar as requisições com um token Composer válido.
+
+## Pré-requisitos
+
+Antes de configurar o registry, certifique-se de que:
+
+- Sua organização possui uma **licença ativa** para o SDK que deseja instalar (Fiscal SDK, ANTT SDK ou ambos)
+- Você possui um **token Composer** gerado no [Developer Portal](https://developers.suot.dev) com os privilégios da licença da organização
+- O projeto usa **PHP 8.4+** e **Composer 2**
+
+Caso ainda não tenha uma organização ou um token, consulte [Organizações](/platform/organizacoes) e [Tokens Composer](/platform/tokens-composer) antes de continuar.
+
+## Configurar o repositório no composer.json
+
+Adicione `packages.suot.dev` à lista de repositórios do seu `composer.json`. O Composer consultará esse registry ao resolver dependências `suot/*`.
+
+```json composer.json
+{
+  "repositories": [
+    {
+      "type": "composer",
+      "url": "https://packages.suot.dev"
+    }
+  ],
+  "require": {}
+}
+```
+
+<Note>
+  O Composer consulta repositórios na ordem em que aparecem no array. Adicionar `packages.suot.dev` é suficiente — o Composer saberá que pacotes `suot/*` devem ser resolvidos a partir desse registry.
+</Note>
+
+## Autenticar
+
+Com o repositório declarado, configure a autenticação via variável de ambiente `COMPOSER_AUTH`. Esta é a forma recomendada tanto para uso local quanto para CI/CD, pois mantém as credenciais fora de arquivos versionados.
+
+```bash
+export COMPOSER_AUTH='{"http-basic":{"packages.suot.dev":{"username":"token","password":"SEU_TOKEN_AQUI"}}}'
+```
+
+Substitua `SEU_TOKEN_AQUI` pelo seu token Composer. Para detalhes sobre como gerar tokens, usar `auth.json` localmente e configurar CI/CD, consulte [Tokens Composer](/platform/tokens-composer).
+
+<Tip>
+  Se usar `auth.json` para autenticação local, adicione-o ao `.gitignore` imediatamente. Nunca commite credenciais no repositório do projeto.
+</Tip>
+
+## Instalar pacotes
+
+Com o registry configurado e a autenticação disponível, use `composer require` normalmente.
+
+### Fiscal SDK
+
+Para emissão e consulta de CT-e e MDF-e:
+
+```bash
+# Pacotes essenciais para CT-e
+composer require suot/fiscal-core suot/fiscal-sefaz suot/fiscal-cte
+
+# Adicionar suporte a MDF-e
+composer require suot/fiscal-mdfe
+
+# Laravel Bridge (opcional — apenas para projetos Laravel)
+composer require suot/fiscal-laravel
+```
+
+### ANTT SDK
+
+Para CIOT e RNTRC:
+
+```bash
+# Pacotes essenciais para CIOT e RNTRC
+composer require suot/antt-core suot/antt-ciot suot/antt-rntrc
+
+# Laravel Bridge (opcional — apenas para projetos Laravel)
+composer require suot/antt-laravel
+```
+
+### Instalar ambos os SDKs no mesmo projeto
+
+Os SDKs são independentes e podem coexistir no mesmo projeto sem conflitos de dependências:
+
+```bash
+composer require suot/fiscal-core suot/fiscal-sefaz suot/fiscal-cte suot/antt-core suot/antt-ciot suot/antt-rntrc
+```
+
+## CI/CD
+
+Em pipelines automatizados, configure `COMPOSER_AUTH` como variável de ambiente secreta na sua plataforma de CI. O Composer lerá a variável automaticamente durante `composer install` ou `composer update`.
+
+```bash
+# Exemplo de etapa em um pipeline genérico
+composer install --no-interaction --prefer-dist --optimize-autoloader
+```
+
+A variável `COMPOSER_AUTH` deve ser definida no ambiente do runner antes de invocar o Composer. Consulte a documentação da sua plataforma de CI para saber como configurar segredos de ambiente (GitHub Actions Secrets, GitLab CI Variables, etc.).
+
+<Warning>
+  Nunca escreva o valor do token diretamente no arquivo de configuração do pipeline (`.github/workflows/*.yml`, `.gitlab-ci.yml`, etc.). Use sempre o mecanismo de segredos da plataforma para injetar `COMPOSER_AUTH` como variável de ambiente no momento da execução.
+</Warning>
+
+<Tip>
+  Para CI/CD, crie um token Composer dedicado — separado dos tokens pessoais dos desenvolvedores. Isso permite revogar o token de CI sem afetar o acesso dos membros do time, e vice-versa.
+</Tip>

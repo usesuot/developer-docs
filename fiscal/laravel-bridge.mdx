@@ -1,0 +1,167 @@
+---
+title: "SUOT Fiscal SDK no Laravel — instalação do Bridge"
+sidebarTitle: "Laravel Bridge"
+description: "Instale o suot/fiscal-laravel Bridge para usar o Fiscal SDK com injeção de dependência, ServiceProvider e configuração via config/suot-fiscal.php no Laravel."
+---
+
+O SUOT Fiscal SDK é **framework-agnostic** — funciona em qualquer projeto PHP 8.4+ sem nenhuma dependência de framework. O **Laravel Bridge** (`suot/fiscal-laravel`) é um pacote opcional que adiciona integração nativa ao Laravel: registro automático dos Handlers no container de injeção de dependência, publicação do arquivo de configuração `config/suot-fiscal.php` e leitura de credenciais a partir de variáveis de ambiente. Se você usa Laravel, o Bridge é a forma recomendada de integrar o SDK.
+
+## Pré-requisitos
+
+Antes de instalar o Bridge, certifique-se de que você possui:
+
+- Laravel **10.x** ou **11.x**
+- PHP **8.4** ou superior
+- Pacotes do Fiscal SDK já instalados via Composer (`suot/fiscal-core` e os pacotes de documentos desejados, como `suot/fiscal-cte` e `suot/fiscal-mdfe`)
+- Certificado digital A1 (arquivo `.pfx`) do emitente em local acessível pela aplicação
+
+<Tip>
+  Ainda não instalou o Fiscal SDK? Consulte [Instalação](/fiscal/instalacao) para configurar o registry Composer da SUOT e instalar os pacotes base.
+</Tip>
+
+## Instalação
+
+<Steps>
+  <Step title="Instalar o pacote Bridge via Composer">
+    Execute o comando abaixo na raiz do seu projeto Laravel:
+
+    ```bash
+    composer require suot/fiscal-laravel
+    ```
+
+    O Laravel detecta automaticamente o `SuotFiscalServiceProvider` via **package auto-discovery** — nenhuma entrada manual em `config/app.php` é necessária.
+  </Step>
+
+  <Step title="Publicar o arquivo de configuração">
+    Publique o arquivo de configuração para o diretório `config/` da sua aplicação:
+
+    ```bash
+    php artisan vendor:publish --tag=suot-fiscal-config
+    ```
+
+    Isso criará o arquivo `config/suot-fiscal.php` com todas as opções disponíveis e valores padrão. Você pode inspecionar e ajustar o arquivo a qualquer momento.
+  </Step>
+
+  <Step title="Configurar as variáveis de ambiente">
+    Adicione as variáveis abaixo ao seu arquivo `.env`. Use valores reais apenas em produção — para desenvolvimento e testes, utilize o ambiente `homologacao`.
+
+    ```ini
+    # Ambiente da SEFAZ: homologacao | producao
+    SUOT_FISCAL_ENV=homologacao
+
+    # CNPJ do emitente (somente dígitos)
+    SUOT_FISCAL_CNPJ=12345678000199
+
+    # Caminho absoluto ou relativo (a partir de storage_path()) para o certificado PFX
+    SUOT_FISCAL_CERT_PATH=/var/www/certs/certificado-empresa.pfx
+
+    # Senha do certificado PFX — nunca comite este valor no repositório
+    SUOT_FISCAL_CERT_PASSWORD=senha_do_certificado
+
+    # Código do autorizador SEFAZ: SP, SVCAN, SVCRS, RS, MG, etc.
+    SUOT_FISCAL_AUTHORIZER=SP
+    ```
+
+    <Warning>
+      Nunca comite o valor de `SUOT_FISCAL_CERT_PASSWORD` no repositório. Use `.env` local para desenvolvimento e um gerenciador de segredos (AWS Secrets Manager, Vault, etc.) em produção.
+    </Warning>
+  </Step>
+
+  <Step title="Usar injeção de dependência nos seus controllers ou services">
+    Após a instalação, todos os Handlers registrados pelo Bridge estão disponíveis para injeção automática pelo container do Laravel.
+
+    ```php
+    <?php
+
+    namespace App\Services;
+
+    use Suot\Fiscal\CTe\Handler\EmitirCTeHandler;
+    use Suot\Fiscal\CTe\Command\EmitirCTeCommand;
+    use Suot\Fiscal\CTe\Result\EmitirCTeResult;
+    use Suot\Fiscal\Exception\InfrastructureException;
+
+    final class EmissaoCTeService
+    {
+        public function __construct(
+            private readonly EmitirCTeHandler $emitirCTeHandler,
+        ) {}
+
+        public function emitir(EmitirCTeCommand $command): EmitirCTeResult
+        {
+            try {
+                return $this->emitirCTeHandler->handle($command);
+            } catch (InfrastructureException $e) {
+                // Registre e relance ou trate conforme a lógica da sua aplicação
+                logger()->critical('Falha de infraestrutura ao emitir CT-e', [
+                    'mensagem' => $e->getMessage(),
+                ]);
+                throw $e;
+            }
+        }
+    }
+    ```
+
+    Em um controller, a injeção funciona da mesma forma:
+
+    ```php
+    <?php
+
+    namespace App\Http\Controllers;
+
+    use App\Services\EmissaoCTeService;
+    use Illuminate\Http\JsonResponse;
+    use Illuminate\Http\Request;
+
+    final class CTeController extends Controller
+    {
+        public function __construct(
+            private readonly EmissaoCTeService $service,
+        ) {}
+
+        public function emitir(Request $request): JsonResponse
+        {
+            // Construa o command a partir dos dados validados da request
+            // $command = CTeBuilder::novo()->...->build();
+
+            $result = $this->service->emitir($command);
+
+            if ($result->isSuccess()) {
+                return response()->json([
+                    'chave'     => (string) $result->getChave(),
+                    'protocolo' => (string) $result->getProtocolo(),
+                ]);
+            }
+
+            return response()->json([
+                'rejeicao' => $result->getRejeicao()->getDescricao(),
+            ], 422);
+        }
+    }
+    ```
+  </Step>
+</Steps>
+
+## Auto-discovery
+
+O `SuotFiscalServiceProvider` é registrado automaticamente pelo mecanismo de **package auto-discovery** do Laravel (presente desde o Laravel 5.5). Nenhuma alteração em `config/app.php` é necessária.
+
+Se o auto-discovery estiver desabilitado no seu projeto, registre o provider manualmente no array `providers` de `bootstrap/providers.php` (Laravel 11+) ou `config/app.php` (Laravel 10):
+
+```php
+// bootstrap/providers.php (Laravel 11+)
+return [
+    // ...
+    \Suot\Fiscal\Laravel\SuotFiscalServiceProvider::class,
+];
+```
+
+## Próximos passos
+
+<CardGroup cols={2}>
+  <Card title="Config Laravel" icon="sliders" href="/fiscal/laravel-configuracao">
+    Referência completa de todas as opções do arquivo `config/suot-fiscal.php`.
+  </Card>
+  <Card title="Emitir CT-e" icon="file-invoice" href="/fiscal/cte">
+    Construa e autorize seu primeiro CT-e com o SDK integrado ao Laravel.
+  </Card>
+</CardGroup>

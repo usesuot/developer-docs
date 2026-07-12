@@ -1,0 +1,125 @@
+---
+title: "SUOT ANTT SDK no Laravel — instalação e configuração do Bridge"
+sidebarTitle: "Laravel Bridge"
+description: "Instale o suot/antt-laravel Bridge para usar o ANTT SDK com injeção de dependência, ServiceProvider e configuração via config/suot-antt.php no Laravel."
+---
+
+O SUOT ANTT SDK é framework-agnóstico por padrão: ele funciona em qualquer projeto PHP sem depender de containers, facades ou convenções de framework. O pacote `suot/antt-laravel` é um bridge **opcional** que integra o SDK ao ecossistema Laravel, adicionando ServiceProvider com auto-discovery, injeção de dependência automática e configuração centralizada via `config/suot-antt.php`.
+
+## Pré-requisitos
+
+- **Laravel 10 ou 11** instalado e funcional
+- Pacotes ANTT já instalados (`suot/antt-core` e ao menos um módulo — `suot/antt-ciot` ou `suot/antt-rntrc`)
+- Consulte a [página de instalação](/antt/instalacao) se ainda não configurou os pacotes base
+
+## Instalação e configuração
+
+<Steps>
+  <Step title="Instale o pacote do bridge">
+    ```bash
+    composer require suot/antt-laravel
+    ```
+
+    O Laravel detecta e registra o `SuotAnttServiceProvider` automaticamente via Package Auto-Discovery. Nenhuma alteração em `config/app.php` é necessária.
+  </Step>
+
+  <Step title="Publique o arquivo de configuração">
+    ```bash
+    php artisan vendor:publish --tag=suot-antt-config
+    ```
+
+    Isso cria o arquivo `config/suot-antt.php` no seu projeto com todas as opções documentadas.
+  </Step>
+
+  <Step title="Configure as variáveis de ambiente">
+    Adicione as seguintes entradas ao seu arquivo `.env`. Substitua os valores de placeholder pelos dados reais do transportador:
+
+    ```env
+    SUOT_ANTT_ENV=homologacao
+    SUOT_ANTT_CNPJ=00.000.000/0001-00
+    SUOT_ANTT_TOKEN=seu-token-antt-placeholder
+    ```
+
+    | Variável | Valores aceitos | Descrição |
+    |---|---|---|
+    | `SUOT_ANTT_ENV` | `homologacao`, `producao` | Ambiente de execução |
+    | `SUOT_ANTT_CNPJ` | CNPJ formatado | CNPJ do transportador |
+    | `SUOT_ANTT_TOKEN` | string | Token de acesso à ANTT |
+
+    <Warning>
+      Nunca defina `SUOT_ANTT_ENV=producao` em ambientes de desenvolvimento ou staging. Registros realizados em produção têm efeito jurídico imediato.
+    </Warning>
+  </Step>
+
+  <Step title="Use os handlers via injeção de dependência">
+    Com o bridge instalado, os handlers ficam disponíveis para injeção automática em controllers, services e jobs:
+
+    ```php
+    <?php
+
+    namespace App\Services;
+
+    use Suot\Antt\Ciot\Handler\CiotHandler;
+    use Suot\Antt\Ciot\Command\RegistrarCiotCommand;
+    use Suot\Antt\Rntrc\Handler\RntrcHandler;
+    use Suot\Antt\Rntrc\Command\ConsultarRntrcCommand;
+    use Suot\Antt\Core\ValueObject\Cnpj;
+
+    final class TransporteService
+    {
+        public function __construct(
+            private readonly CiotHandler $ciotHandler,
+            private readonly RntrcHandler $rntrcHandler,
+        ) {}
+
+        public function validarTransportador(string $cnpj): bool
+        {
+            $result = $this->rntrcHandler->consultar(
+                command: new ConsultarRntrcCommand(
+                    cnpj: new Cnpj($cnpj),
+                ),
+            );
+
+            return $result->isSuccess()
+                && $result->getData()->situacaoCadastral === 'ATIVO';
+        }
+    }
+    ```
+
+    Em um controller:
+
+    ```php
+    <?php
+
+    namespace App\Http\Controllers;
+
+    use App\Services\TransporteService;
+    use Illuminate\Http\JsonResponse;
+    use Illuminate\Http\Request;
+
+    final class TransporteController extends Controller
+    {
+        public function __construct(
+            private readonly TransporteService $transporteService,
+        ) {}
+
+        public function verificar(Request $request): JsonResponse
+        {
+            $ativo = $this->transporteService->validarTransportador(
+                cnpj: $request->string('cnpj')->toString(),
+            );
+
+            return response()->json(['ativo' => $ativo]);
+        }
+    }
+    ```
+  </Step>
+</Steps>
+
+## Auto-discovery
+
+O `SuotAnttServiceProvider` é registrado automaticamente pelo Laravel via Composer package auto-discovery. Não é necessário adicioná-lo manualmente ao array `providers` em `config/app.php`.
+
+<Note>
+  Se o seu projeto desabilita o auto-discovery (`dont-discover` no `composer.json`), adicione `Suot\\Antt\\Laravel\\SuotAnttServiceProvider` manualmente ao array `providers` em `config/app.php`.
+</Note>

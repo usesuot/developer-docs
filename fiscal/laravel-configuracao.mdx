@@ -1,0 +1,182 @@
+---
+title: "Referência de configuração do SUOT Fiscal Bridge para Laravel"
+sidebarTitle: "Config Laravel"
+description: "Todas as opções do arquivo config/suot-fiscal.php do SUOT Fiscal Laravel Bridge: ambiente, certificado, CNPJ, autorizador e retry policy."
+---
+
+Após publicar o arquivo de configuração com `php artisan vendor:publish --tag=suot-fiscal-config`, o Laravel Bridge passa a ler todas as suas opções de `config/suot-fiscal.php`. Este documento descreve cada chave disponível, seus valores aceitos e as variáveis de ambiente correspondentes. Nenhuma opção precisa ser alterada diretamente no arquivo — o padrão é carregar todos os valores sensíveis via `env()`, mantendo o código-fonte livre de credenciais.
+
+## Arquivo de configuração completo
+
+O arquivo abaixo representa o `config/suot-fiscal.php` publicado pelo Bridge com todos os campos e valores padrão:
+
+```php
+<?php
+
+return [
+
+    /*
+    |--------------------------------------------------------------------------
+    | Ambiente SEFAZ
+    |--------------------------------------------------------------------------
+    |
+    | Define se as operações serão realizadas em homologação ou produção.
+    | Use 'homologacao' durante o desenvolvimento e testes.
+    | Altere para 'producao' somente após aprovação junto à SEFAZ.
+    |
+    | Valores aceitos: 'homologacao' | 'producao'
+    |
+    */
+    'env' => env('SUOT_FISCAL_ENV', 'homologacao'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | CNPJ do emitente
+    |--------------------------------------------------------------------------
+    |
+    | CNPJ da empresa emissora dos documentos fiscais, somente dígitos (14 chars).
+    | Deve corresponder ao titular do certificado digital informado abaixo.
+    |
+    */
+    'cnpj' => env('SUOT_FISCAL_CNPJ', ''),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Certificado digital A1
+    |--------------------------------------------------------------------------
+    |
+    | Caminho para o arquivo PFX (.pfx) do certificado digital e sua senha.
+    | Nunca armazene a senha diretamente neste arquivo — use env().
+    |
+    */
+    'certificate_path'     => env('SUOT_FISCAL_CERT_PATH', ''),
+    'certificate_password' => env('SUOT_FISCAL_CERT_PASSWORD', ''),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Autorizador SEFAZ
+    |--------------------------------------------------------------------------
+    |
+    | Código do autorizador responsável pela UF do emitente.
+    | Exemplos: 'SP', 'MG', 'RS', 'SVCAN' (SEFAZ Virtual Contingência AN),
+    |           'SVCRS' (SEFAZ Virtual Contingência RS).
+    |
+    */
+    'authorizer' => env('SUOT_FISCAL_AUTHORIZER', 'SP'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Timeout HTTP
+    |--------------------------------------------------------------------------
+    |
+    | Tempo máximo (em segundos) para aguardar resposta dos webservices da SEFAZ.
+    | Valores muito baixos podem causar timeouts em momentos de lentidão do fisco.
+    | Recomendado: entre 30 e 60 segundos.
+    |
+    */
+    'timeout' => (int) env('SUOT_FISCAL_TIMEOUT', 45),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Retry policy
+    |--------------------------------------------------------------------------
+    |
+    | Configuração de tentativas automáticas em caso de falha técnica transitória
+    | (timeout, erro 500 do webservice). Rejeições da SEFAZ não são repetidas.
+    |
+    */
+    'retry' => [
+        'attempts' => (int) env('SUOT_FISCAL_RETRY_ATTEMPTS', 2),
+        'delay_ms' => (int) env('SUOT_FISCAL_RETRY_DELAY_MS', 1500),
+    ],
+
+];
+```
+
+## Referência das opções
+
+<ParamField path="env" type="string" required>
+  Ambiente de operação junto à SEFAZ.
+
+  - `'homologacao'` — Webservices de teste. Documentos não têm validade jurídica.
+  - `'producao'` — Webservices reais. Documentos são válidos perante o fisco.
+
+  Padrão: `'homologacao'`
+</ParamField>
+
+<ParamField path="cnpj" type="string" required>
+  CNPJ do emitente, contendo **somente os 14 dígitos numéricos** (sem pontuação). Deve ser o mesmo CNPJ titular do certificado digital configurado em `certificate_path`.
+
+  Exemplo: `'12345678000199'`
+</ParamField>
+
+<ParamField path="certificate_path" type="string" required>
+  Caminho absoluto para o arquivo de certificado digital no formato **PFX/PKCS#12** (extensão `.pfx` ou `.p12`). O processo PHP (ou o usuário do servidor web) precisa ter permissão de leitura neste arquivo.
+
+  Exemplo: `'/var/www/certs/certificado-empresa.pfx'`
+</ParamField>
+
+<ParamField path="certificate_password" type="string" required>
+  Senha do arquivo PFX. **Nunca** informe este valor diretamente no arquivo de configuração — leia sempre de `env('SUOT_FISCAL_CERT_PASSWORD')`.
+</ParamField>
+
+<ParamField path="authorizer" type="string" required>
+  Código do autorizador (polo de autorização) da SEFAZ responsável pela UF do emitente. Os valores mais comuns para CT-e e MDF-e são:
+
+  | Código | Descrição |
+  |---|---|
+  | `'SP'` | SEFAZ São Paulo |
+  | `'MG'` | SEFAZ Minas Gerais |
+  | `'RS'` | SEFAZ Rio Grande do Sul |
+  | `'SVCAN'` | SEFAZ Virtual de Contingência — Ambiente Nacional |
+  | `'SVCRS'` | SEFAZ Virtual de Contingência — Rio Grande do Sul |
+
+  Padrão: `'SP'`
+</ParamField>
+
+<ParamField path="timeout" type="integer">
+  Tempo limite em segundos para cada requisição HTTP aos webservices da SEFAZ. Se o webservice não responder dentro deste prazo, uma `InfrastructureException` com código de timeout é lançada.
+
+  Padrão: `45`
+</ParamField>
+
+<ParamField path="retry.attempts" type="integer">
+  Número máximo de tentativas automáticas em caso de falha técnica transitória (timeout ou erro de servidor). A contagem **não** inclui a tentativa inicial — `2` significa uma tentativa inicial mais até 2 repetições.
+
+  Rejeições retornadas pela SEFAZ **não** são repetidas automaticamente.
+
+  Padrão: `2`
+</ParamField>
+
+<ParamField path="retry.delay_ms" type="integer">
+  Intervalo em milissegundos entre cada tentativa de retry. O valor é aplicado como espera fixa antes de cada repetição.
+
+  Padrão: `1500`
+</ParamField>
+
+<Warning>
+  **Nunca** escreva o valor de `certificate_password` diretamente no arquivo `config/suot-fiscal.php` ou em qualquer arquivo versionado no repositório. Use sempre `env('SUOT_FISCAL_CERT_PASSWORD')` e gerencie o valor real por meio de variáveis de ambiente seguras ou um gerenciador de segredos (AWS Secrets Manager, HashiCorp Vault, Laravel Secrets, etc.).
+</Warning>
+
+## Variáveis de ambiente
+
+Todas as opções de configuração possuem uma variável de ambiente correspondente. Use a tabela abaixo como referência ao configurar seu `.env`, CI/CD ou plataforma de deploy.
+
+| Chave em `config/suot-fiscal.php` | Variável de ambiente | Valor padrão |
+|---|---|---|
+| `env` | `SUOT_FISCAL_ENV` | `homologacao` |
+| `cnpj` | `SUOT_FISCAL_CNPJ` | _(vazio)_ |
+| `certificate_path` | `SUOT_FISCAL_CERT_PATH` | _(vazio)_ |
+| `certificate_password` | `SUOT_FISCAL_CERT_PASSWORD` | _(vazio)_ |
+| `authorizer` | `SUOT_FISCAL_AUTHORIZER` | `SP` |
+| `timeout` | `SUOT_FISCAL_TIMEOUT` | `45` |
+| `retry.attempts` | `SUOT_FISCAL_RETRY_ATTEMPTS` | `2` |
+| `retry.delay_ms` | `SUOT_FISCAL_RETRY_DELAY_MS` | `1500` |
+
+<Note>
+  Em ambientes com múltiplos emitentes (multi-tenant), é possível instanciar os Handlers diretamente com uma `FiscalConfig` diferente por requisição, sem depender das variáveis globais do `config/suot-fiscal.php`. Consulte a documentação de [Configuração](/fiscal/configuracao) do SDK base para mais detalhes.
+</Note>
+
+<Tip>
+  Antes de alternar para `producao`, verifique todos os itens da lista de verificação em [Guia de produção](/guias/producao): validade do certificado, CNPJ habilitado na SEFAZ, timeout adequado ao ambiente e monitoramento de `InfrastructureException`.
+</Tip>

@@ -1,0 +1,201 @@
+---
+title: "Glossário SUOT — termos fiscais, regulatórios e de SDK"
+sidebarTitle: "Glossário"
+description: "Referência de termos usados na documentação SUOT: conceitos fiscais brasileiros, regulatórios, da ANTT e do SDK como Command, Result e Value Object."
+---
+
+Este glossário reúne os termos mais importantes utilizados ao longo de toda a documentação SUOT. Ele abrange tanto o vocabulário fiscal e regulatório do transporte brasileiro — CT-e, MDF-e, SEFAZ, ANTT — quanto os conceitos específicos dos SDKs, como `Command`, `Result` e `Value Object`. Use-o como referência rápida sempre que encontrar um termo desconhecido durante a leitura.
+
+---
+
+## Termos do SDK
+
+Conceitos de arquitetura e padrões de design adotados nos pacotes SUOT.
+
+<Accordion title="Command">
+Objeto imutável que representa a **intenção de uma operação** a ser executada — por exemplo, emitir um CT-e ou registrar um CIOT. Um `Command` é construído com named arguments e `Value Objects`, e jamais carrega lógica de execução. Após construído, ele é passado a um `Handler`, que realiza a chamada ao serviço externo (SEFAZ ou ANTT).
+
+```php
+$command = new EmitirCTeCommand(
+    chaveAcesso: new ChaveCTe('...'),
+    emitente: new Cnpj('00.000.000/0001-00'),
+    // ...
+);
+```
+</Accordion>
+
+<Accordion title="Handler">
+Componente responsável por **receber um `Command` e executá-lo** contra um serviço externo (SEFAZ ou ANTT). O `Handler` orquestra a serialização do documento, a comunicação HTTP, o tratamento de respostas e o retorno de um `Result` tipado. Não deve ser instanciado diretamente na maioria dos casos — use o container de DI ou o Laravel Bridge.
+
+```php
+$result = $handler->handle($command);
+```
+</Accordion>
+
+<Accordion title="InfrastructureException">
+Exceção lançada pelo SDK quando ocorre uma **falha técnica de infraestrutura** — timeout de rede, resposta HTTP 5xx, perda de conectividade ou certificado inválido. Uma `InfrastructureException` **não representa uma rejeição de negócio** do SEFAZ ou da ANTT; ela indica que a operação não chegou a ser processada pelo serviço externo. Sempre registre o stacktrace e considere configurar uma `RetryPolicy`.
+
+<Warning>
+Nunca trate uma `InfrastructureException` como equivalente a uma rejeição. A operação pode ou não ter chegado ao destino — verifique o estado no serviço externo antes de retransmitir.
+</Warning>
+</Accordion>
+
+<Accordion title="Laravel Bridge">
+Pacote opcional que integra os SDKs SUOT ao **container de injeção de dependência do Laravel**. Disponível como `suot/fiscal-laravel` (para o SUOT Fiscal SDK) e `suot/antt-laravel` (para o SUOT ANTT SDK). O bridge registra os `Handlers`, aplica as configurações do `config/suot.php` e disponibiliza facades e service providers prontos para uso.
+
+```bash
+composer require suot/fiscal-laravel
+```
+</Accordion>
+
+<Accordion title="Result">
+Objeto tipado retornado por um `Handler` após a execução de um `Command`. O `Result` **encapsula o estado da operação**: sucesso com autorização, rejeição esperada pelo SEFAZ/ANTT, ou metadados da resposta (como `cStat`, `xMotivo` e protocolo). Inspecionar o `Result` é a forma correta de tratar todos os cenários de negócio — nunca use exceções para fluxo de controle de rejeições esperadas.
+
+```php
+$result = $handler->handle($command);
+
+if ($result->isAuthorized()) {
+    $protocolo = $result->protocolo();
+}
+
+if ($result->isRejected()) {
+    $motivo = $result->xMotivo();
+}
+```
+</Accordion>
+
+<Accordion title="RetryPolicy">
+Política **configurável de retentativas** para falhas transitórias de infraestrutura. Permite definir o número máximo de tentativas, o intervalo entre elas (fixo ou exponencial) e quais tipos de falha são elegíveis para retry. Aplica-se apenas a `InfrastructureException` — rejeições de negócio **não** são reprocessadas automaticamente.
+
+```php
+$policy = RetryPolicy::exponential(maxAttempts: 3, baseDelayMs: 500);
+```
+</Accordion>
+
+<Accordion title="Step Builder">
+Padrão de construção fluente utilizado para **montar documentos complexos** como CT-e e MDF-e. Cada chamada encadeia o próximo passo obrigatório, garantindo validação em tempo de compilação (via tipagem PHP) e impedindo que documentos incompletos sejam enviados ao SEFAZ. O IDE pode guiar o desenvolvedor pelos campos exigidos na sequência correta.
+
+```php
+$cte = CTeBuilder::novo()
+    ->comIdentificacao($identificacao)
+    ->comEmitente($emitente)
+    ->comDestinatario($destinatario)
+    ->comPrestacao($prestacao)
+    ->build();
+```
+</Accordion>
+
+<Accordion title="Value Object">
+Objeto imutável que **encapsula um campo de domínio com validação embutida**. Exemplos: `Cnpj`, `ChaveCTe`, `Rntrc`, `CodigoCiot`. Um `Value Object` garante que um valor inválido nunca seja representado no sistema — a validação ocorre na construção, não no momento do envio ao SEFAZ ou ANTT.
+
+```php
+$cnpj = new Cnpj('00.000.000/0001-00'); // lança exceção se inválido
+$chave = new ChaveCTe('35240300000000000000550010000000011000000015');
+```
+</Accordion>
+
+---
+
+## Termos fiscais e regulatórios
+
+Vocabulário do ecossistema fiscal e regulatório brasileiro aplicável ao transporte de cargas.
+
+<Accordion title="ANTT">
+**Agência Nacional de Transportes Terrestres** — autarquia federal responsável pela regulação do transporte rodoviário de cargas e passageiros no Brasil. Administra cadastros como o RNTRC e sistemas como o CIOT. O SUOT ANTT SDK fornece integração direta com os serviços da ANTT.
+</Accordion>
+
+<Accordion title="BP-e">
+**Bilhete de Passagem Eletrônico** — documento fiscal eletrônico destinado ao transporte de passageiros. Faz parte do roadmap do SUOT Fiscal SDK.
+
+<Info>
+O suporte ao BP-e está previsto no roadmap. Consulte o [Developer Portal](https://developers.suot.dev) para acompanhar o status.
+</Info>
+</Accordion>
+
+<Accordion title="CIOT">
+**Código Identificador de Operação de Transporte** — código obrigatório para operações de frete acima de determinado valor, emitido junto à ANTT. O CIOT identifica cada operação de transporte rodoviário de cargas e deve acompanhar o pagamento ao transportador. O SUOT ANTT SDK oferece geração e consulta de CIOT.
+</Accordion>
+
+<Accordion title="CT-e">
+**Conhecimento de Transporte Eletrônico** — documento fiscal eletrônico **obrigatório** para toda operação de transporte de cargas no Brasil. Substitui os antigos documentos em papel (Conhecimento de Transporte Rodoviário, Aéreo, etc.). Autorizado pelo SEFAZ estadual competente. É o principal documento suportado pelo SUOT Fiscal SDK.
+</Accordion>
+
+<Accordion title="CT-e OS">
+**CT-e para Outros Serviços** — variante do CT-e destinada a serviços de transporte não cobertos pelo CT-e padrão, como serviços de coleta, unitização e distribuição. Está em desenvolvimento no SUOT Fiscal SDK.
+
+<Info>
+O CT-e OS está em desenvolvimento. Verifique o roadmap no [Developer Portal](https://developers.suot.dev).
+</Info>
+</Accordion>
+
+<Accordion title="cStat">
+**Código de status** presente na resposta do SEFAZ ou da ANTT. Identifica de forma padronizada o resultado de uma operação: autorização (ex: `100`), rejeição (ex: `2xx`, `3xx`, `4xx`, `5xx`) ou outros estados. Sempre inspecione o `cStat` do `Result` antes de tomar decisões de negócio.
+
+```php
+$cStat = $result->cStat(); // ex: "100"
+```
+</Accordion>
+
+<Accordion title="DFe">
+**Documento Fiscal Eletrônico** — termo genérico que abrange todos os documentos fiscais digitais do ecossistema brasileiro: CT-e, MDF-e, NF-e, BP-e, entre outros. O SUOT Fiscal SDK foca nos DFes de transporte de cargas.
+</Accordion>
+
+<Accordion title="Homologação">
+**Ambiente de testes** disponibilizado pelo SEFAZ e pela ANTT para que desenvolvedores validem suas integrações sem impacto fiscal. Documentos emitidos em homologação **não têm validade jurídica** e não geram obrigações tributárias. Sempre teste em homologação antes de ir para produção.
+
+<Warning>
+Nunca use dados reais de CNPJ, certificados A1 de produção ou chaves de acesso reais em ambiente de homologação de terceiros.
+</Warning>
+</Accordion>
+
+<Accordion title="MDF-e">
+**Manifesto Eletrônico de Documentos Fiscais** — documento fiscal que **agrupa CT-e e/ou NF-e** para uma viagem de transporte rodoviário. Obrigatório para operações interestaduais e para veículos que transportam múltiplos documentos fiscais. Gerenciado pelo SEFAZ e suportado pelo SUOT Fiscal SDK.
+</Accordion>
+
+<Accordion title="MONITRIIP">
+**Sistema de Monitoramento de Transporte Interestadual e Internacional de Passageiros** — plataforma da ANTT para controle e fiscalização do transporte rodoviário de passageiros. Está previsto no roadmap do SUOT ANTT SDK.
+
+<Info>
+O suporte ao MONITRIIP está previsto no roadmap. Consulte o [Developer Portal](https://developers.suot.dev).
+</Info>
+</Accordion>
+
+<Accordion title="PEF">
+**Programa de Eficiência do Frete** — programa regulatório da ANTT em desenvolvimento no SUOT ANTT SDK.
+
+<Info>
+O suporte ao PEF está em desenvolvimento. Verifique o roadmap no [Developer Portal](https://developers.suot.dev).
+</Info>
+</Accordion>
+
+<Accordion title="Protocolo">
+**Número de protocolo de autorização** emitido pelo SEFAZ ao autorizar um DFe. O protocolo deve ser impresso no DACTE (para CT-e), DAMDFE (para MDF-e) ou equivalente, e é a prova legal de que o documento foi autorizado. Disponível no `Result` após uma operação bem-sucedida.
+
+```php
+$protocolo = $result->protocolo(); // ex: "135240000012345"
+```
+</Accordion>
+
+<Accordion title="RNTRC">
+**Registro Nacional de Transportadores Rodoviários de Cargas** — cadastro obrigatório junto à ANTT para empresas e profissionais autônomos que realizam transporte rodoviário de cargas no Brasil. O SUOT ANTT SDK oferece consulta e validação de RNTRC.
+</Accordion>
+
+<Accordion title="SEFAZ">
+**Secretaria da Fazenda** — órgão da administração tributária responsável pelos sistemas de autorização de DFes no Brasil (NF-e, CT-e, MDF-e, BP-e, entre outros). Cada estado possui sua própria SEFAZ, mas a maioria das operações de CT-e é autorizada pela SEFAZ do estado do emitente. O SUOT Fiscal SDK abstrai a comunicação com todas as SEFAZ estaduais.
+</Accordion>
+
+<Accordion title="SOT">
+**Sistema de Ordens de Transporte** — categoria de software proposta pela SUOT para plataformas de gestão de transporte que integram emissão de DFes, controle regulatório (ANTT) e operações logísticas em um único fluxo orientado a ordens.
+</Accordion>
+
+<Accordion title="SVC-AN / SVC-RS">
+**Sistemas de Contingência do SEFAZ** (SEFAZ Virtual de Contingência) — infraestruturas alternativas utilizadas quando a SEFAZ autorizadora primária está indisponível. O SUOT Fiscal SDK suporta contingência via SVC-AN (SEFAZ Virtual do Ambiente Nacional) e SVC-RS (SEFAZ Virtual do Rio Grande do Sul) conforme as regras vigentes.
+</Accordion>
+
+<Accordion title="xMotivo">
+**Campo de texto** presente na resposta do SEFAZ ou da ANTT que descreve, em linguagem legível, o motivo de uma rejeição ou o resultado de uma operação. Sempre apresente o `xMotivo` junto ao `cStat` ao registrar logs ou exibir mensagens de erro.
+
+```php
+$xMotivo = $result->xMotivo(); // ex: "Rejeição: CNPJ do emitente inválido"
+```
+</Accordion>

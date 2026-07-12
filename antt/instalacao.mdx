@@ -1,0 +1,109 @@
+---
+title: "Instalar o SUOT ANTT SDK no seu projeto PHP"
+sidebarTitle: "Instalação"
+description: "Adicione o SUOT ANTT SDK ao seu projeto via Composer: configure o registry privado, instale os pacotes de CIOT, RNTRC e opcionalmente o Laravel Bridge."
+---
+
+O SUOT ANTT SDK é distribuído via Composer a partir do registry privado `packages.suot.dev`. O processo de instalação é idêntico ao do SUOT Fiscal SDK: configure o registry, autentique com o seu token de licença e instale apenas os pacotes que a sua aplicação utiliza.
+
+## Pré-requisitos
+
+Confirme os seguintes requisitos antes de iniciar:
+
+- **PHP 8.4 ou superior** instalado e acessível na linha de comando
+- **Composer 2** (`composer --version` deve retornar `2.x.x`)
+- **Token Composer** obtido no painel SUOT após ativar a sua licença
+- **Licença SUOT ativa** associada ao CNPJ da sua empresa
+
+## Instalação
+
+<Steps>
+  <Step title="Configure o registry privado">
+    Adicione o registry `packages.suot.dev` ao `composer.json` do projeto. Se você já realizou este passo para o SUOT Fiscal SDK, o registry já está configurado — pule para a etapa seguinte.
+
+    ```json composer.json
+    {
+      "repositories": [
+        {
+          "type": "composer",
+          "url": "https://packages.suot.dev"
+        }
+      ]
+    }
+    ```
+
+    Ou via linha de comando:
+
+    ```bash
+    composer config repositories.suot composer https://packages.suot.dev
+    ```
+  </Step>
+
+  <Step title="Autentique com o seu token">
+    Salve as credenciais de acesso ao registry. Substitua `seu-token-aqui` pelo token obtido no painel SUOT.
+
+    ```bash
+    composer config http-basic.packages.suot.dev token seu-token-aqui
+    ```
+
+    <Note>
+      Esse comando grava as credenciais em `auth.json` no diretório raiz do projeto. Adicione `auth.json` ao `.gitignore` para não versionar o token.
+    </Note>
+  </Step>
+
+  <Step title="Instale os pacotes necessários">
+    Instale somente os pacotes que a sua aplicação precisar. `suot/antt-core` é incluído automaticamente como dependência dos demais.
+
+    **Somente CIOT:**
+
+    ```bash
+    composer require suot/antt-core suot/antt-ciot
+    ```
+
+    **Somente RNTRC:**
+
+    ```bash
+    composer require suot/antt-core suot/antt-rntrc
+    ```
+
+    **CIOT e RNTRC juntos:**
+
+    ```bash
+    composer require suot/antt-core suot/antt-ciot suot/antt-rntrc
+    ```
+  </Step>
+
+  <Step title="Verifique a instalação">
+    Confirme que os pacotes foram instalados corretamente importando os namespaces principais:
+
+    ```php
+    <?php
+
+    require_once __DIR__ . '/vendor/autoload.php';
+
+    use Suot\Antt\Core\Config\AnttConfig;
+    use Suot\Antt\Ciot\Command\RegistrarCiotCommand;
+    use Suot\Antt\Rntrc\Command\ConsultarRntrcCommand;
+
+    echo 'SUOT ANTT SDK instalado com sucesso.' . PHP_EOL;
+    ```
+
+    Execute o arquivo:
+
+    ```bash
+    php verify.php
+    ```
+
+    Se não houver erros de autoload, a instalação está correta.
+  </Step>
+</Steps>
+
+## Laravel Bridge
+
+Se o seu projeto utiliza Laravel, instale também o pacote `suot/antt-laravel` para obter ServiceProvider, injeção de dependência e configuração via `config/suot-antt.php`:
+
+```bash
+composer require suot/antt-laravel
+```
+
+Consulte a documentação completa do [Laravel Bridge](/antt/laravel-bridge) para os próximos passos.

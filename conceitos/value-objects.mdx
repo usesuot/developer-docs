@@ -1,0 +1,118 @@
+---
+title: "Value Objects nos SDKs SUOT — tipagem de campos fiscais"
+sidebarTitle: "Value Objects"
+description: "Os Value Objects dos SDKs SUOT encapsulam campos fiscais e regulatórios com validação imbutida, imutabilidade e autocomplete total em IDEs e agentes de IA."
+---
+
+Em vez de strings e inteiros soltos, todos os campos de domínio nos SDKs SUOT são representados por **Value Objects** — objetos imutáveis que carregam um valor validado, transmitem o significado exato do campo e são completamente compreensíveis por IDEs, PHPStan e agentes de IA. Se um CNPJ inválido for fornecido, o erro acontece na construção do objeto, não em algum ponto imprevisível durante a execução.
+
+## O que é um Value Object
+
+Um Value Object é um objeto cujo valor define sua identidade — dois `Cnpj` com o mesmo número são equivalentes, independentemente de serem instâncias diferentes. Nos SDKs SUOT, Value Objects têm três propriedades fundamentais:
+
+- **Imutabilidade** — após construído, o valor não pode ser alterado
+- **Validação no construtor** — dados inválidos lançam exceção imediatamente, na origem
+- **Tipagem explícita** — `Cnpj` não é intercambiável com `Cpf`, mesmo que ambos sejam strings por baixo
+
+Essa abordagem elimina uma categoria inteira de bugs: passar um CPF onde um CNPJ é esperado torna-se um erro de tipo detectado pelo PHPStan, não um erro em produção.
+
+## Value Objects disponíveis
+
+A tabela abaixo lista os Value Objects presentes nos SDKs SUOT. Consulte a documentação de cada SDK para o conjunto completo.
+
+| Value Object | Representa | Exemplo de construção |
+|---|---|---|
+| `Cnpj` | CNPJ válido (14 dígitos, com ou sem formatação) | `new Cnpj('12345678000195')` |
+| `Cpf` | CPF válido (11 dígitos, com ou sem formatação) | `new Cpf('12345678909')` |
+| `ChaveCTe` | Chave de acesso do CT-e (44 dígitos) | `new ChaveCTe('35240112345678000195570010000000011000000014')` |
+| `ChaveMDFe` | Chave de acesso do MDF-e (44 dígitos) | `new ChaveMDFe('41240112345678000195580010000000021000000025')` |
+| `Protocolo` | Número de protocolo de autorização SEFAZ | `new Protocolo('135240000012345')` |
+| `InscricaoEstadual` | Inscrição Estadual do emitente | `new InscricaoEstadual('110042490114')` |
+| `Rntrc` | Registro Nacional de Transportadores Rodoviários de Cargas | `new Rntrc('12345678')` |
+| `Placa` | Placa de veículo no padrão Mercosul ou antigo | `new Placa('ABC1D23')` |
+
+<Info>
+  Value Objects aceitam strings com ou sem formatação (pontos, barras, hífens). A normalização ocorre internamente — você não precisa limpar a string antes de construir o objeto.
+</Info>
+
+## Validação imbutida
+
+A validação acontece no construtor, não em um método `validate()` separado que você precisa lembrar de chamar. Isso significa que um Value Object que existe em memória é, por definição, válido.
+
+```php
+<?php
+
+use Suot\Fiscal\ValueObjects\Cnpj;
+use Suot\Fiscal\ValueObjects\ChaveCTe;
+use Suot\Fiscal\ValueObjects\Protocolo;
+use Suot\Fiscal\Exceptions\InvalidValueException;
+
+// ✅ Construção bem-sucedida — CNPJ válido
+$cnpj = new Cnpj('12345678000195');
+
+// ❌ Lança InvalidValueException imediatamente — CNPJ com dígito verificador errado
+try {
+    $cnpjInvalido = new Cnpj('12345678000100');
+} catch (InvalidValueException $e) {
+    // O erro está aqui, na origem, não dentro do Handler ou no retorno da SEFAZ.
+    echo $e->getMessage(); // "CNPJ inválido: dígito verificador incorreto."
+}
+
+// ❌ Lança InvalidValueException — chave com comprimento errado
+try {
+    $chaveIncompleta = new ChaveCTe('35240112345678');
+} catch (InvalidValueException $e) {
+    echo $e->getMessage(); // "ChaveCTe deve ter exatamente 44 dígitos."
+}
+```
+
+<Warning>
+  Nunca capture `InvalidValueException` para silenciar o erro e continuar o fluxo. Essa exceção indica que os dados de entrada são inválidos — a aplicação deve rejeitá-los antes de tentar qualquer operação fiscal ou regulatória.
+</Warning>
+
+## Value Objects e PHPStan
+
+Os SDKs SUOT são desenvolvidos com PHPStan ao nível máximo. Todos os métodos de Commands, Handlers e Results usam tipos concretos de Value Objects em suas assinaturas — nunca `string` onde um `Cnpj` é esperado.
+
+```php
+<?php
+
+// O PHPStan detecta esse erro antes da execução:
+// Argument #1 ($emitente) of CteAutorizacaoCommand::__construct()
+// expects Suot\Fiscal\ValueObjects\Cnpj, string given.
+
+$command = new CteAutorizacaoCommand(
+    emitente: '12345678000195', // ← erro de tipo detectado estaticamente
+    chave: new ChaveCTe('35240112345678000195570010000000011000000014'),
+    xml: $xmlAssinado,
+);
+```
+
+Isso significa que erros de integração que normalmente só apareceriam em produção são detectados no pipeline de CI — ou diretamente na sua IDE, antes mesmo de rodar o código.
+
+## Usando Value Objects com named arguments
+
+A combinação de Value Objects e named arguments torna o código de integração autoexplicativo. Não é necessário consultar a documentação para entender o que cada argumento representa.
+
+```php
+<?php
+
+use Suot\Antt\Rntrc\ConsultaRntrcCommand;
+use Suot\Antt\ValueObjects\Rntrc;
+use Suot\Antt\ValueObjects\Cnpj;
+
+// Named arguments + Value Objects = intent clara, sem ambiguidade
+$command = new ConsultaRntrcCommand(
+    transportador: new Cnpj('98765432000188'),
+    rntrc: new Rntrc('87654321'),
+);
+
+// Comparação: o mesmo código sem Value Objects e sem named arguments
+// $command = new ConsultaRntrcCommand('98765432000188', '87654321');
+// ↑ Qual é o transportador? Qual é o RNTRC? Qual é a ordem dos argumentos?
+//   Isso só pode ser respondido consultando a assinatura do construtor.
+```
+
+<Tip>
+  Se a sua IDE exibir o tipo incorreto para um Value Object (por exemplo, inferir `mixed` em vez do tipo concreto), verifique se o PHPStan e o servidor de linguagem PHP da sua IDE estão usando a mesma versão do `php.ini` e do autoloader. Editores como PhpStorm e VS Code com Intelephense resolvem tipos de Value Objects automaticamente quando o Composer autoload está configurado corretamente.
+</Tip>

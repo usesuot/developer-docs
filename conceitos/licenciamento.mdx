@@ -1,0 +1,106 @@
+---
+title: "Modelo de licenciamento SUOT — organizações, tokens e vencimento"
+sidebarTitle: "Licenciamento"
+description: "Entenda o modelo de licenciamento SUOT: a organização é titular, tokens Composer autenticam o acesso, e o vencimento não desliga software em produção."
+---
+
+O modelo de licenciamento SUOT foi projetado para equipes de desenvolvimento e software houses — não para desenvolvedores individuais. A organização é a titular da licença, múltiplos desenvolvedores compartilham o acesso e os tokens Composer são a ponte entre a licença comercial e o repositório privado de pacotes. Entender essas distinções evita surpresas em ambientes de CI/CD, onboarding de novos membros e renovações de plano.
+
+## A organização é titular da licença
+
+A licença SUOT pertence à **organização** — a empresa ou entidade jurídica que contratou o serviço — não ao desenvolvedor individual que fez o cadastro. Isso significa:
+
+- Todos os desenvolvedores da organização podem gerar tokens de acesso ao repositório privado `packages.suot.dev`
+- A saída de um desenvolvedor da equipe não invalida a licença nem os tokens dos demais
+- A renovação e o gerenciamento do plano são responsabilidade da organização, não de cada membro individualmente
+- Novos membros da equipe herdam o acesso ao repositório simplesmente criando seus próprios tokens — nenhuma licença adicional é necessária
+
+<Info>
+  Se a sua organização tiver múltiplos CNPJs (ex.: holding com subsidiárias), cada entidade jurídica que utilizar os SDKs SUOT em produção deve ter sua própria licença. Entre em contato com [developers.suot.dev](https://developers.suot.dev) para discutir arranjos de grupo.
+</Info>
+
+## Licença vs. assinatura
+
+Esses dois termos têm significados distintos no contexto SUOT e é importante não confundi-los:
+
+| Conceito | O que é | Onde é gerenciado |
+|---|---|---|
+| **Assinatura** | O relacionamento comercial: plano contratado, faturamento, ciclo de renovação | Portal da organização em [developers.suot.dev](https://developers.suot.dev) |
+| **Licença** | O acesso técnico: permissão para baixar pacotes de `packages.suot.dev` e usar versões específicas dos SDKs | Gerada automaticamente a partir da assinatura ativa |
+
+Uma assinatura ativa gera uma licença ativa. Quando a assinatura vence ou é cancelada, a licença para de conceder acesso a *novas* versões dos SDKs — mas o software já instalado continua funcionando normalmente (veja a seção [Vencimento da licença](#vencimento-da-licenca) abaixo).
+
+Para dúvidas sobre planos, upgrades e faturamento, acesse [developers.suot.dev](https://developers.suot.dev).
+
+## Tokens Composer
+
+Os tokens são o mecanismo de autenticação que conecta o Composer ao repositório privado `packages.suot.dev`. Eles não são licenças — são credenciais de acesso geradas dentro do escopo de uma licença.
+
+**Boas práticas para tokens:**
+
+- Cada **desenvolvedor** deve ter seu próprio token — isso permite revogar o acesso individualmente sem afetar os demais
+- Cada **pipeline de CI/CD** (GitHub Actions, GitLab CI, Bitbucket Pipelines etc.) deve ter seu próprio token rotacionado regularmente
+- **Nunca** commite um token diretamente no repositório de código — use variáveis de ambiente ou secrets do seu serviço de CI/CD
+- Tokens comprometidos podem ser revogados a qualquer momento pelo administrador da organização no portal
+
+```bash
+# Configuração do token no auth.json do Composer (não versionar este arquivo)
+composer config --global http-basic.packages.suot.dev seu-token-aqui x-token
+```
+
+```json
+// auth.json — adicione ao .gitignore
+{
+    "http-basic": {
+        "packages.suot.dev": {
+            "username": "seu-token-aqui",
+            "password": "x-token"
+        }
+    }
+}
+```
+
+<Warning>
+  O arquivo `auth.json` contém credenciais de acesso. Certifique-se de que ele está listado no `.gitignore` do projeto e nunca seja incluído em imagens Docker publicadas.
+</Warning>
+
+Para criar e gerenciar tokens da sua organização, consulte a documentação de [Tokens Composer](/platform/tokens-composer).
+
+## Vencimento da licença
+
+O que acontece quando a licença da sua organização vence?
+
+| Impacto | Detalhes |
+|---|---|
+| ❌ Acesso a novas versões dos SDKs | Não é possível baixar versões lançadas após o vencimento |
+| ❌ Suporte técnico SUOT | Tickets e canais de suporte ficam indisponíveis |
+| ✅ Software já instalado | Continua funcionando normalmente em produção |
+| ✅ Versões já baixadas | Ficam disponíveis no Composer cache e no `vendor/` do projeto |
+
+**Não existe kill switch no runtime dos SDKs SUOT.** O código instalado não verifica periodicamente se a licença está ativa. Uma aplicação em produção com os SDKs SUOT instalados continuará funcionando após o vencimento da licença — ela simplesmente não poderá atualizar para versões mais recentes até que a assinatura seja renovada.
+
+<Warning>
+  Planeje as renovações com antecedência. Se a sua organização depende de atualizações dos SDKs para manutenção de segurança, correções de bugs ou novos recursos regulatórios (ex.: uma versão de leiaute da SEFAZ), o vencimento da licença pode bloquear um deploy crítico. Recomendamos renovar com pelo menos 30 dias de antecedência.
+</Warning>
+
+## Software houses e SaaS
+
+Se a sua organização desenvolve um produto (SaaS, ERP, TMS, etc.) que utiliza os SDKs SUOT internamente, o modelo é o seguinte:
+
+- A **organização desenvolvedora do produto** (sua empresa) é titular da licença SUOT
+- Os **usuários finais do produto** (seus clientes) não precisam de licença SUOT — eles usam o produto, não o SDK diretamente
+- A licença cobre o uso dos SDKs no código do produto, independentemente de quantos clientes finais o produto atende
+
+Isso significa que você não precisa repassar custos de licenciamento SUOT para cada cliente do seu produto — a licença é da organização que desenvolve e mantém o software.
+
+```
+Software house (titular da licença SUOT)
+    └── Produto SaaS / ERP / TMS
+            ├── Cliente A  ← usa o produto, não precisa de licença SUOT
+            ├── Cliente B  ← usa o produto, não precisa de licença SUOT
+            └── Cliente C  ← usa o produto, não precisa de licença SUOT
+```
+
+<Note>
+  Se os seus clientes integrarem diretamente com os SDKs SUOT (ex.: você distribui os SDKs como parte de um kit de integração que eles instalam no ambiente deles), entre em contato com [developers.suot.dev](https://developers.suot.dev) para avaliar o modelo de licenciamento adequado para esse cenário.
+</Note>
