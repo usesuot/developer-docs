@@ -1,6 +1,6 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "luma",
+  "theme": "mint",
   "name": "SUOT Developers",
   "description": "Documentação técnica da SUOT para SDKs fiscais, ANTT e Developer Platform. Da ordem ao resultado.",
   "colors": {
