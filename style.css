@@ -13,10 +13,10 @@
   --suot-success: #0f9f68;
 }
 
-/* Keep wordmark readable in the navbar */
-#navbar img,
-header img[alt*="logo" i],
-nav img {
-  max-height: 28px;
+/* Wordmark more visible in the navbar (default Mintlify h-7 is too small) */
+#navbar img.nav-logo,
+#navbar .nav-logo {
+  height: 2.5rem; /* 40px — was 28px (h-7) */
+  max-height: 2.5rem;
   width: auto;
 }
