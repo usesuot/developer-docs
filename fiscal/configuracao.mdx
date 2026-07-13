@@ -1,201 +1,38 @@
 ---
-title: "Configurar o SUOT Fiscal SDK — credenciais e ambiente"
+title: "Configurar o client Cte"
 sidebarTitle: "Configuração"
-description: "Configure o SUOT Fiscal SDK com CNPJ emitente, certificado digital A1, autorizador SEFAZ e ambiente de homologação ou produção em PHP puro."
+description: "O host monta certificado, gateway HTTP/SEFAZ e injeta Handlers no Cte. Em Laravel, use a bridge."
 ---
 
-Esta página descreve a configuração do SUOT Fiscal SDK em **PHP puro**, sem dependência de nenhum framework. Se você usa Laravel, consulte também [Configuração no Laravel](/fiscal/laravel-configuracao), que cobre o arquivo `config/fiscal.php`, Facades e suporte a múltiplos tenants.
+O pacote `usesuot/fiscal-cte` é framework-agnostic. Não há um “FiscalConfig” único obrigatório na API pública: a aplicação **liga** adapters de certificado e comunicação SEFAZ aos Handlers e passa-os ao client `Cte`.
 
-O SDK adota uma abordagem de configuração explícita: todos os valores são passados de forma tipada através de objetos de configuração — sem variáveis globais, sem arquivos `.ini` implícitos, sem leitura automática de `$_ENV`. Você tem controle total sobre como e quando as credenciais são carregadas.
+## O que o host precisa
 
-## O que você precisa configurar
-
-Antes de criar sua primeira instância de configuração, tenha em mãos:
-
-- **CNPJ do emitente** — o CNPJ da empresa que assina e transmite os documentos fiscais
-- **Certificado digital A1** — arquivo no formato PFX/P12 com a chave privada e o certificado do emitente
-- **Senha do certificado** — a senha de proteção do arquivo PFX/P12
-- **Ambiente** — `homologacao` para testes ou `producao` para emissão real
-- **Autorizador SEFAZ** — o autorizador responsável pela UF do emitente (autorizador estadual, SVC-AN ou SVC-RS)
-
-## Criando a configuração
-
-O ponto de entrada da configuração é a classe `FiscalConfig`, disponível no pacote `suot/fiscal-core`. Use o builder fluente para compor a configuração passo a passo:
+1. Certificado A1 (PKCS#12) acessível em runtime
+2. Ambiente `homologation` / `production` (flag explícita para produção)
+3. Handlers CQRS construídos com o pipeline interno (`Operation/` é `@internal`)
+4. Instância de `Suot\Fiscal\Cte\Application\Cte` com esses Handlers
 
 ```php
-<?php
+use Suot\Fiscal\Cte\Application\Cte;
 
-use Suot\Fiscal\Core\Config\FiscalConfig;
-use Suot\Fiscal\Core\ValueObjects\Cnpj;
-use Suot\Fiscal\Core\ValueObjects\Certificate;
-use Suot\Fiscal\Sefaz\Authorizer;
-use Suot\Fiscal\Sefaz\Environment;
-
-$config = FiscalConfig::builder()
-    ->issuer(
-        cnpj: new Cnpj('00000000000191'),        // substitua pelo CNPJ real do emitente
-    )
-    ->certificate(
-        Certificate::fromPfxFile(
-            path:     getenv('FISCAL_CERT_PATH'),     // caminho do arquivo PFX
-            password: getenv('FISCAL_CERT_PASSWORD'), // senha do certificado
-        )
-    )
-    ->environment(Environment::Homologacao)
-    ->authorizer(Authorizer::SpSefaz)
-    ->build();
-```
-
-<Note>
-  Os identificadores dos autorizadores disponíveis (como `Authorizer::SpSefaz`) são fornecidos pelo pacote `suot/fiscal-sefaz` como enum PHP. Consulte a documentação do pacote para a lista completa de autorizadores por UF.
-</Note>
-
-Com a instância de `FiscalConfig` criada, você a passa para os clientes de cada documento fiscal:
-
-```php
-<?php
-
-use Suot\Fiscal\Cte\CteClient;
-use Suot\Fiscal\Mdfe\MdfeClient;
-
-// cliente para CT-e
-$cteClient = new CteClient(config: $config);
-
-// cliente para MDF-e
-$mdfeClient = new MdfeClient(config: $config);
-```
-
-## Ambientes
-
-<Info>
-  Sempre comece em **homologação**. O ambiente de homologação da SEFAZ aceita transmissões sem validade jurídica, permitindo validar sua integração antes de emitir documentos reais.
-</Info>
-
-| Ambiente | Constante | Quando usar |
-|---|---|---|
-| Homologação | `Environment::Homologacao` | Desenvolvimento, testes e validação de integração |
-| Produção | `Environment::Producao` | Emissão de documentos com validade jurídica e fiscal |
-
-Para alternar entre ambientes, basta trocar a constante passada ao `.environment()` do builder — nenhuma outra alteração é necessária na configuração.
-
-```php
-// em desenvolvimento
-->environment(Environment::Homologacao)
-
-// em produção
-->environment(Environment::Producao)
-```
-
-<Warning>
-  Nunca use certificados de produção em testes de homologação. Mantenha certificados separados para cada ambiente e gerencie-os como segredos distintos na sua infraestrutura.
-</Warning>
-
-## Certificado digital
-
-O Fiscal SDK opera com certificados digitais do tipo **A1** no formato **PFX/P12** (PKCS#12), que contêm a chave privada e o certificado público do emitente em um único arquivo protegido por senha.
-
-### Carregando o certificado
-
-```php
-use Suot\Fiscal\Core\ValueObjects\Certificate;
-
-// a partir de um arquivo no sistema de arquivos
-$certificate = Certificate::fromPfxFile(
-    path:     '/caminho/seguro/para/certificado.pfx',
-    password: 'senha-do-certificado',
+// Pseudocódigo: sua fábrica / container monta os Handlers
+$cte = new Cte(
+    $issueHandler,
+    $cancelHandler,
+    // … demais Handlers + CteValidate
 );
 
-// a partir do conteúdo binário em memória (útil quando o cert vem de um cofre ou banco de dados)
-$certificate = Certificate::fromPfxContents(
-    contents: $pfxBinaryContents,
-    password: 'senha-do-certificado',
-);
+$result = $cte->serviceStatus()/* … */->handle();
 ```
 
-### Boas práticas de segurança
+## Laravel
 
-<Warning>
-  **Nunca versione arquivos de certificado.** Adicione extensões `.pfx`, `.p12` e `.pem` ao `.gitignore` do projeto imediatamente. A exposição de um certificado digital de produção pode gerar responsabilidade fiscal e jurídica.
-</Warning>
+Prefira [Laravel Bridge](/fiscal/laravel-bridge): Service Provider registra certificado, gateway, `Cte` e aliases. Publique `config/fiscal.php` e use variáveis `FISCAL_*`.
 
-<Tip>
-  Use variáveis de ambiente para o caminho e a senha do certificado, e injete-as pelo sistema de secrets da sua plataforma (AWS Secrets Manager, HashiCorp Vault, GitHub Actions Secrets, etc.).
+## Produção
 
-  ```bash .env (somente local — nunca comite)
-  FISCAL_CERT_PATH=/var/secrets/fiscal/empresa.pfx
-  FISCAL_CERT_PASSWORD=senha-muito-segura
-  ```
+- Não chame `inProduction()` sem `FISCAL_ALLOW_PRODUCTION` (ou equivalente no host) e homologação prévia
+- Schemas e endpoints vêm dos pacotes — não baixe XSD em tempo de emissão
 
-  No código, acesse via `getenv('FISCAL_CERT_PATH')` ou equivalente do seu framework. Nunca hardcode o caminho ou a senha diretamente no código-fonte.
-</Tip>
-
-```gitignore .gitignore
-# certificados digitais — nunca versione
-*.pfx
-*.p12
-*.pem
-auth.json
-```
-
-## Autorizadores SEFAZ
-
-O Fiscal SDK suporta os autorizadores estaduais, SVC-AN (SEFAZ Virtual de Contingência — Ambiente Nacional) e SVC-RS (SEFAZ Virtual de Contingência — Rio Grande do Sul). O autorizador é selecionado por um valor do enum `Authorizer`, disponível no pacote `suot/fiscal-sefaz`.
-
-```php
-use Suot\Fiscal\Sefaz\Authorizer;
-
-// autorizador estadual
-->authorizer(Authorizer::SpSefaz)   // São Paulo
-->authorizer(Authorizer::RsSefaz)   // Rio Grande do Sul
-
-// SEFAZ Virtual de Contingência
-->authorizer(Authorizer::SvcAn)     // SVC-AN
-->authorizer(Authorizer::SvcRs)     // SVC-RS
-```
-
-Consulte a documentação do pacote `suot/fiscal-sefaz` para ver todos os valores disponíveis por UF e as regras de contingência.
-
-## Configuração completa — exemplo
-
-A seguir, um exemplo de bootstrap completo de configuração para uso em produção, com todas as boas práticas aplicadas:
-
-```php config/fiscal.php (PHP puro — sem framework)
-<?php
-
-use Suot\Fiscal\Core\Config\FiscalConfig;
-use Suot\Fiscal\Core\ValueObjects\Cnpj;
-use Suot\Fiscal\Core\ValueObjects\Certificate;
-use Suot\Fiscal\Sefaz\Authorizer;
-use Suot\Fiscal\Sefaz\Environment;
-
-return FiscalConfig::builder()
-    ->issuer(
-        cnpj: new Cnpj((string) getenv('FISCAL_CNPJ')),
-    )
-    ->certificate(
-        Certificate::fromPfxFile(
-            path:     (string) getenv('FISCAL_CERT_PATH'),
-            password: (string) getenv('FISCAL_CERT_PASSWORD'),
-        )
-    )
-    ->environment(
-        getenv('FISCAL_ENV') === 'producao'
-            ? Environment::Producao
-            : Environment::Homologacao
-    )
-    ->authorizer(
-        Authorizer::from((string) getenv('FISCAL_AUTHORIZER'))
-    )
-    ->build();
-```
-
-<Note>
-  Este exemplo usa `getenv()` para manter a independência de framework. Em projetos Laravel, utilize `config('fiscal.*')` e o helper `env()` — consulte [Configuração no Laravel](/fiscal/laravel-configuracao) para detalhes.
-</Note>
-
-## Próximos passos
-
-- [Guia de homologação](/guias/homologacao) — como testar sua integração no ambiente SEFAZ de homologação antes de ir para produção
-- [Configuração no Laravel](/fiscal/laravel-configuracao) — configuração nativa com Service Provider, Facades e múltiplos emitentes
-- [Emitir CT-e](/fiscal/cte) — construa e transmita seu primeiro Conhecimento de Transporte Eletrônico
-- [Emitir MDF-e](/fiscal/mdfe) — construa e transmita seu primeiro Manifesto Eletrônico
+Próximo: [Emitir CT-e](/fiscal/cte/emissao).

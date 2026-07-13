@@ -1,62 +1,95 @@
 ---
-title: "SUOT — SDKs PHP para Software de Transporte no Brasil"
+title: "SUOT — SDKs PHP para software de transporte no Brasil"
 sidebarTitle: "Início"
-description: "SDKs tipados para documentos fiscais e obrigações regulatórias de transporte no Brasil. PHP 8.4+, Laravel, IDEs e agentes de IA."
+description: "Documentação pública do Fiscal SDK. Avalie a API tipada antes de contratar. Da ordem ao resultado."
 ---
 
 SUOT para Desenvolvedores — infraestrutura para quem constrói software de transporte no Brasil.
 
-**Infraestrutura para construir software de transporte no Brasil.**
-
-SDKs tipados para documentos fiscais e obrigações regulatórias, com uma experiência de desenvolvimento pensada para PHP, Laravel, IDEs e agentes de IA. Da ordem ao resultado.
+SDKs tipados para documentos fiscais e obrigações regulatórias, com DX pensada para PHP 8.4+, Laravel, IDEs e agentes de IA.
 
 <CardGroup cols={2}>
-  <Card title="Começar integração" icon="rocket" href="/introducao/quickstart">
-    Do zero ao primeiro CT-e autorizado: configure o registry, instale os pacotes e envie seu primeiro documento fiscal.
+  <Card title="Avaliar o Fiscal SDK" icon="book-open" href="/fiscal/avaliar">
+    Leia a API pública, veja exemplos de CT-e com `$cte->…->handle()` e entenda Result e rejeição — sem criar conta.
   </Card>
-  <Card title="Acessar Developer Portal" icon="building-columns" href="https://developers.suot.dev">
-    Crie sua organização, obtenha sua licença e gere tokens Composer para acessar o registry privado.
+  <Card title="Contratar / Developer Portal" icon="building-columns" href="https://developers.suot.dev">
+    Crie a organização, ative a licença e gere tokens Composer para instalar via packages.suot.dev.
   </Card>
 </CardGroup>
 
-<CardGroup cols={3}>
-  <Card title="Fiscal SDK" icon="file-invoice" href="/fiscal/visao-geral">
-    Documentos fiscais — CT-e, MDF-e e base futura para CT-e OS e BP-e — por API PHP tipada.
+<CardGroup cols={2}>
+  <Card title="CT-e" icon="file-invoice" href="/fiscal/cte">
+    Emitir, consultar, eventos, contingência e DF-e com `$cte->…->handle()`.
   </Card>
-  <Card title="ANTT SDK" icon="truck" href="/antt/visao-geral">
-    CIOT, RNTRC e obrigações regulatórias junto à ANTT por API PHP tipada.
-  </Card>
-  <Card title="Developer Platform" icon="building" href="/platform/organizacoes">
-    Organizações, licenças, tokens Composer e acesso ao registry privado.
+  <Card title="Instalar com Composer" icon="download" href="/fiscal/instalacao">
+    Registry privado, autenticação e `composer require` quando for integrar de verdade.
   </Card>
 </CardGroup>
 
 ## Como funciona
 
-A SUOT fornece SDKs independentes que a sua aplicação hospedeira consome diretamente. Não existe uma API REST intermediária — você instala os pacotes via Composer, configura credenciais e chama os handlers tipados.
+Não há API REST intermediária. Você consome o SDK na sua aplicação:
 
 ```
-Sua aplicação → [Laravel Bridge opcional] → SDK → SEFAZ / Serviço regulatório
+Sua aplicação → [Laravel Bridge opcional] → Fiscal SDK → SEFAZ / serviço regulatório
 ```
 
 <Note>
-  A coordenação das obrigações fiscais e regulatórias pertence à sua aplicação. Os SDKs executam as operações; a sua lógica de negócio decide quando e como chamá-los.
+  A documentação é pública. Conta e licença não são pré-requisito para **avaliar** a API. Licença e token Composer entram quando você for **instalar** os pacotes no seu projeto.
 </Note>
+
+## Mental model (CT-e)
+
+Monte a intenção no client e encerre em `handle()`:
+
+```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+
+try {
+    $result = $cte->issue()
+        ->forOperation('ot-000123')
+        ->inHomologation()
+        // … issuedBy, from, to, carrying, …
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('issue');
+    // Host: alertar; filar retry conforme $failure->retryPolicy (timeout ambíguo → QueryBeforeRetry)
+    throw $e;
+}
+
+if ($result->isAuthorized()) {
+    // Host: persistir accessKey, protocolNumber, submittedDocumentXml, responseXml, receivedAt, operationId
+}
+
+if ($result->isRejected()) {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterCorrection => /* remontar issue() com dados corrigidos + novo operationId */,
+        RetryMode::QueryBeforeRetry => /* byAccessKey() antes de reemitir */,
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar conforme política */,
+        RetryMode::Never, null => /* definitivo; não reenviar */,
+    };
+}
+```
+
+Rejeição fiscal é `Result` (`isRejected()`, `failure()`), não exception. Falha de infraestrutura (rede, certificado) é exception. O **host** persiste XML/chave e executa retry — o SDK só orienta.
 
 ## Primeiros passos
 
 <Steps>
-  <Step title="Acesse o Developer Portal">
-    Crie sua organização em [developers.suot.dev](https://developers.suot.dev) e gere seu token Composer. A licença é vinculada à organização.
+  <Step title="Entenda a API pública">
+    Leia [API pública](/fiscal/api-publica) e a jornada [CT-e](/fiscal/cte).
   </Step>
-  <Step title="Configure o registry Composer">
-    Adicione `packages.suot.dev` como repositório Composer autenticado com seu token pessoal ou de CI/CD.
+  <Step title="Siga a trilha Avaliar">
+    Veja [Avaliar o SDK](/fiscal/avaliar) — caminho de aprendizado da API pública, Result e fluxos de CT-e.
   </Step>
-  <Step title="Instale o SDK desejado">
-    Use `composer require` para instalar os pacotes do Fiscal SDK, do ANTT SDK ou de ambos — são independentes.
+  <Step title="Instale quando for integrar">
+    Com licença ativa, configure o registry e rode `composer require` — [Instalação](/fiscal/instalacao).
   </Step>
-  <Step title="Faça sua primeira operação">
-    Construa um Command, passe para o Handler e inspecione o Result. Autocomplete e PHPDoc em pt-BR guiam cada etapa.
+  <Step title="Homologue na SEFAZ">
+    Ambiente de homologação, certificado e flags explícitas antes de produção — [Homologação](/guias/homologacao).
   </Step>
 </Steps>
 
@@ -64,32 +97,15 @@ Sua aplicação → [Laravel Bridge opcional] → SDK → SEFAZ / Serviço regul
 
 <CardGroup cols={2}>
   <Card title="Tipagem total" icon="code">
-    PHPStan máximo, zero métodos mágicos. Autocomplete funciona em qualquer IDE sem configuração extra.
+    PHPStan no máximo, zero métodos mágicos. Autocomplete sem configuração extra.
   </Card>
-  <Card title="Pronto para IA" icon="robot">
-    PHPDoc em pt-BR, tipos explícitos e named arguments permitem que agentes de IA como Copilot e Claude Code gerem código correto na primeira tentativa.
+  <Card title="Pronto para IA" icon="bot">
+    PHPDoc em pt-BR, enums e named arguments — agentes geram código alinhado à API.
   </Card>
-  <Card title="Laravel ou framework-agnostic" icon="laravel">
-    Use diretamente em qualquer projeto PHP 8.4+ ou ative o Laravel Bridge para injeção de dependência e configuração via `config/`.
+  <Card title="Laravel ou agnóstico" icon="layers">
+    PHP 8.4+ direto ou Laravel Bridge com DI e `config/`.
   </Card>
-  <Card title="Resultado ou exceção — sem ambiguidade" icon="shield-check">
-    Rejeições esperadas retornam um `Result`. Falhas técnicas lançam `InfrastructureException`. Nunca um array anônimo.
-  </Card>
-</CardGroup>
-
-## Explore a documentação
-
-<CardGroup cols={2}>
-  <Card title="Quickstart" icon="rocket" href="/introducao/quickstart">
-    Do zero ao primeiro CT-e autorizado em minutos.
-  </Card>
-  <Card title="Ecossistema SUOT" icon="diagram-project" href="/introducao/ecossistema">
-    Entenda como docs, developer portal, registry e SDKs se relacionam.
-  </Card>
-  <Card title="Conceitos de arquitetura" icon="layer-group" href="/conceitos/arquitetura">
-    Command, Handler, Result, Value Objects e CQRS — os blocos fundamentais.
-  </Card>
-  <Card title="Guia de homologação" icon="flask" href="/guias/homologacao">
-    Configure o ambiente de testes antes de ir para produção.
+  <Card title="Result sem ambiguidade" icon="shield-check">
+    Rejeição esperada → Result. Falha técnica → InfrastructureException.
   </Card>
 </CardGroup>

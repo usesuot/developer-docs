@@ -1,0 +1,51 @@
+---
+title: "CT-e — jornada do conhecimento"
+sidebarTitle: "Visão geral"
+description: "Mapa da API pública de CT-e: validação, emissão, resultados, consultas, eventos e contingência. Ainda não declarar production-ready sem schemas, fixtures e homologação."
+---
+
+O CT-e (modelo 57) é o primeiro documento com API pública unificada no Fiscal SDK: client `Suot\Fiscal\Cte\Application\Cte` via `$cte->…->handle()`.
+
+<Warning>
+Capacidades fiscais só são production-ready após schemas importados, fixtures, ciclo de vida completo e evidência de homologação. Esta documentação descreve a API pública atual — não um selo de prontidão.
+</Warning>
+
+## Jornada
+
+<CardGroup cols={2}>
+  <Card title="Validação" icon="shield-check" href="/fiscal/cte/validacao">
+    `$cte->validate()` — CNPJ, IE, RNTRC, certificado, setup do emitente (sem SEFAZ).
+  </Card>
+  <Card title="Emissão" icon="file-plus" href="/fiscal/cte/emissao">
+    `$cte->issue()…->handle()`.
+  </Card>
+  <Card title="Resultados" icon="circle-check" href="/fiscal/cte/resultados">
+    `IssueCteResult`: autorizado, rejeitado, `failure()`, campos a persistir.
+  </Card>
+  <Card title="Contingência" icon="triangle-alert" href="/fiscal/cte/contingencia">
+    `registerEpec` + `issueInContingency` com EPEC e SVC.
+  </Card>
+</CardGroup>
+
+## Consultas
+
+<CardGroup cols={2}>
+  <Card title="Status do serviço" href="/fiscal/cte/consultas/status-servico" />
+  <Card title="Por chave" href="/fiscal/cte/consultas/por-chave" />
+  <Card title="Protocolo" href="/fiscal/cte/consultas/protocolo" />
+  <Card title="Download procCTe" href="/fiscal/cte/consultas/download-proc" />
+  <Card title="Distribuição DF-e" href="/fiscal/cte/consultas/distribuicao-dfe" />
+</CardGroup>
+
+## Eventos
+
+<CardGroup cols={2}>
+  <Card title="Cancelamento" href="/fiscal/cte/eventos/cancelamento" />
+  <Card title="Carta de correção" href="/fiscal/cte/eventos/carta-correcao" />
+  <Card title="Comprovante de entrega" href="/fiscal/cte/eventos/comprovante-entrega" />
+  <Card title="Insucesso na entrega" href="/fiscal/cte/eventos/insucesso-entrega" />
+</CardGroup>
+
+## Próximos passos
+
+Trilha didática: [Avaliar o SDK](/fiscal/avaliar).

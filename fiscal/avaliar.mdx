@@ -1,0 +1,58 @@
+---
+title: "Avaliar o SDK sem conta"
+sidebarTitle: "Avaliar"
+description: "Trilha de aprendizado da API pública de CT-e: Result, validação, emissão, consultas, eventos e contingência — sem licença. Conta e token entram só na instalação via Composer."
+---
+
+Ler esta documentação **não exige licença**. Conta, assinatura e token Composer entram quando você for **instalar** pacotes a partir de `packages.suot.dev`.
+
+## Modelo mental
+
+```text
+Montar intenção  →  handle()  →  Result
+($cte->…)              isAuthorized / isRejected / failure / retryPolicy
+```
+
+O **host** persiste, enfileira, faz retry e decide idempotência. O SDK devolve artefatos e orientação — não grava banco, não agenda fila, não reenvia sozinho.
+
+## Trilha de aprendizado
+
+Siga as páginas na ordem. Cada uma traz snippets inline com `$cte->…->handle()`, envelope de exception + Result e ações do host.
+
+<CardGroup cols={2}>
+  <Card title="1. API pública" icon="book-open" href="/fiscal/api-publica">
+    Client `$cte` e o que é `@internal`.
+  </Card>
+  <Card title="2. Validação" icon="shield-check" href="/fiscal/cte/validacao">
+    `$cte->validate()` — setup do emitente sem SEFAZ.
+  </Card>
+  <Card title="3. Emissão" icon="file-plus" href="/fiscal/cte/emissao">
+    `$cte->issue()…->handle()`.
+  </Card>
+  <Card title="4. Resultados" icon="circle-check" href="/fiscal/cte/resultados">
+    `isAuthorized`, `failure()`, `retryPolicy()` e o que persistir.
+  </Card>
+  <Card title="5. Consultas" icon="magnifying-glass" href="/fiscal/cte/consultas/status-servico">
+    Status, chave, protocolo, `procCTe` e DF-e.
+  </Card>
+  <Card title="6. Eventos" icon="bell" href="/fiscal/cte/eventos/cancelamento">
+    Cancelamento, CC-e, comprovante e insucesso.
+  </Card>
+  <Card title="7. Contingência" icon="triangle-alert" href="/fiscal/cte/contingencia">
+    EPEC + emissão via SVC.
+  </Card>
+  <Card title="8. Instalação" icon="download" href="/fiscal/instalacao">
+    Registry, token e `composer require` (aí sim precisa de licença).
+  </Card>
+</CardGroup>
+
+## Depois de avaliar
+
+<CardGroup cols={2}>
+  <Card title="Jornada CT-e" icon="map" href="/fiscal/cte">
+    Mapa completo de validação, emissão, consultas e eventos.
+  </Card>
+  <Card title="Resultados (transversal)" icon="shield-check" href="/fiscal/resultados">
+    Actionable Result em todas as operações.
+  </Card>
+</CardGroup>

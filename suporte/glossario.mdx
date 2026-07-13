@@ -13,19 +13,19 @@ Este glossário reúne os termos mais importantes utilizados ao longo de toda a 
 Conceitos de arquitetura e padrões de design adotados nos pacotes SUOT.
 
 <Accordion title="Command">
-Objeto imutável que representa a **intenção de uma operação** a ser executada — por exemplo, emitir um CT-e ou registrar um CIOT. Um `Command` é construído com named arguments e `Value Objects`, e jamais carrega lógica de execução. Após construído, ele é passado a um `Handler`, que realiza a chamada ao serviço externo (SEFAZ ou ANTT).
+Objeto imutável que representa a **intenção de uma operação** a ser executada — por exemplo, emitir um CT-e (`IssueCteCommand`) ou registrar um CIOT. Um `Command` é montado com `::create()…->build()` (cadeia tipada) ou, quando aplicável, com tipos explícitos; jamais carrega lógica de execução. Após construído, ele é passado a um `Handler` (ou a `$cte->handle($command)`), que realiza a chamada ao serviço externo (SEFAZ ou ANTT).
 
 ```php
-$command = new EmitirCTeCommand(
-    chaveAcesso: new ChaveCTe('...'),
-    emitente: new Cnpj('00.000.000/0001-00'),
-    // ...
-);
+$command = IssueCteCommand::create()
+    ->forOperation('ot-000123')
+    ->inHomologation()
+    // … cadeia tipada até build()
+    ->build();
 ```
 </Accordion>
 
 <Accordion title="Handler">
-Componente responsável por **receber um `Command` e executá-lo** contra um serviço externo (SEFAZ ou ANTT). O `Handler` orquestra a serialização do documento, a comunicação HTTP, o tratamento de respostas e o retorno de um `Result` tipado. Não deve ser instanciado diretamente na maioria dos casos — use o container de DI ou o Laravel Bridge.
+Componente responsável por **receber um `Command` e executá-lo** contra um serviço externo (SEFAZ ou ANTT). Exemplo CT-e: `IssueCteHandler::handle()` → `IssueCteResult`. O `Handler` orquestra o pipeline interno e devolve um `Result` tipado. No dia a dia, prefira o client `Cte` (`$cte->issue()…->handle()`) ou injete o Handler via DI / Laravel Bridge.
 
 ```php
 $result = $handler->handle($command);
@@ -41,15 +41,15 @@ Nunca trate uma `InfrastructureException` como equivalente a uma rejeição. A o
 </Accordion>
 
 <Accordion title="Laravel Bridge">
-Pacote opcional que integra os SDKs SUOT ao **container de injeção de dependência do Laravel**. Disponível como `suot/fiscal-laravel` (para o SUOT Fiscal SDK) e `suot/antt-laravel` (para o SUOT ANTT SDK). O bridge registra os `Handlers`, aplica as configurações do `config/suot.php` e disponibiliza facades e service providers prontos para uso.
+Pacote opcional que integra os SDKs SUOT ao **container de injeção de dependência do Laravel**. Disponível como `usesuot/fiscal-laravel` (para o SUOT Fiscal SDK) e o bridge equivalente do ANTT SDK. O bridge registra o client `Cte`, os `Handlers` (ex.: `IssueCteHandler`) e aplica as configurações publicadas.
 
 ```bash
-composer require suot/fiscal-laravel
+composer require usesuot/fiscal-laravel
 ```
 </Accordion>
 
 <Accordion title="Result">
-Objeto tipado retornado por um `Handler` após a execução de um `Command`. O `Result` **encapsula o estado da operação**: sucesso com autorização, rejeição esperada pelo SEFAZ/ANTT, ou metadados da resposta (como `cStat`, `xMotivo` e protocolo). Inspecionar o `Result` é a forma correta de tratar todos os cenários de negócio — nunca use exceções para fluxo de controle de rejeições esperadas.
+Objeto tipado retornado por um `Handler` após a execução de um `Command`. No CT-e de emissão: `IssueCteResult`. O `Result` **encapsula o estado da operação**: autorizado (`isAuthorized()`), rejeitado (`isRejected()` + `failure()`), ou em processamento. Inspecionar o `Result` é a forma correta de tratar cenários de negócio — nunca use exceções para fluxo de controle de rejeições fiscais esperadas.
 
 ```php
 $result = $handler->handle($command);
@@ -73,15 +73,16 @@ $policy = RetryPolicy::exponential(maxAttempts: 3, baseDelayMs: 500);
 </Accordion>
 
 <Accordion title="Step Builder">
-Padrão de construção fluente utilizado para **montar documentos complexos** como CT-e e MDF-e. Cada chamada encadeia o próximo passo obrigatório, garantindo validação em tempo de compilação (via tipagem PHP) e impedindo que documentos incompletos sejam enviados ao SEFAZ. O IDE pode guiar o desenvolvedor pelos campos exigidos na sequência correta.
+Cadeia tipada para **montar a intenção fiscal** em etapas. No CT-e, a API padrão do consumidor é `$cte->issue()…->handle()` (e demais portas do client). Commands/Queries materializados aparecem no [Laravel Bridge](/fiscal/laravel-bridge). Não existe `CTeBuilder` na API do consumidor. Cada etapa retorna um tipo concreto para autocomplete; `handle()` (ou `build()` ao materializar) valida a completude.
 
 ```php
-$cte = CTeBuilder::novo()
-    ->comIdentificacao($identificacao)
-    ->comEmitente($emitente)
-    ->comDestinatario($destinatario)
-    ->comPrestacao($prestacao)
-    ->build();
+$result = $cte->issue()
+    ->forOperation('ot-000123')
+    ->inHomologation()
+    ->numbered(series: '1', number: '12345')
+    ->issuedIn(new Uf('RS'))
+    // … issuedBy / from / to / forShipper / …
+    ->handle();
 ```
 </Accordion>
 

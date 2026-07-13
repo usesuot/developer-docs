@@ -1,0 +1,51 @@
+---
+title: "Baixar procCTe"
+sidebarTitle: "Download proc"
+description: "Obtenha o XML protocolado (procCTe) com $cte->downloadProc() e withSubmittedXml quando já tiver o XML enviado."
+---
+
+## O quê / quando
+
+Após autorização (ou para remontar o documento oficial), obtenha o `procCTe` (CT-e + protocolo).
+
+## Exemplo
+
+```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+use Suot\Fiscal\Core\ValueObject\Uf;
+
+try {
+    $result = $cte->downloadProc()
+        ->forOperation('proc-1')
+        ->inHomologation()
+        ->authorizerUf(new Uf('RS'))
+        ->cnpj($cnpjEmitente)
+        ->accessKey($chave44)
+        ->withSubmittedXml($xmlCteEnviado) // fonte preferida quando disponível
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('download_proc');
+    // Host: alertar; filar retry conforme $failure->retryPolicy
+    throw $e;
+}
+
+if ($result->isFound()) {
+    // Host: persistir procCteXml, source, accessKey
+}
+
+if (! $result->isFound()) {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar novo download */,
+        RetryMode::QueryBeforeRetry => /* reconciliar distribuição DF-e / por chave */,
+        RetryMode::Never, null => /* não inventar proc; alertar operação */,
+        default => /* seguir recoveryGuide */,
+    };
+}
+```
+
+`withSubmittedXml()` permite montar/localizar a partir do XML que o host já guardou na emissão (`submittedDocumentXml`).
+
+Ver [Distribuição DF-e](/fiscal/cte/consultas/distribuicao-dfe).

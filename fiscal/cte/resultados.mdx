@@ -1,0 +1,100 @@
+---
+title: "Ler o resultado da emissão"
+sidebarTitle: "Resultados"
+description: "IssueCteResult: isAuthorized, isRejected, failure, retryPolicy e campos que o host deve persistir. AfterCorrection remonta issue()."
+---
+
+## O quê / quando
+
+Toda emissão devolve `Suot\Fiscal\Cte\Operation\Issue\IssueCteResult`. Rejeição fiscal é Result — não exception.
+
+## Interpretar
+
+```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+
+try {
+    $result = $cte->issue()
+        ->forOperation('ot-123-issue')
+        ->inHomologation()
+        // … cadeia …
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('issue');
+    // Host: alertar; filar retry conforme $failure->retryPolicy (timeout ambíguo → QueryBeforeRetry)
+    throw $e;
+}
+
+if ($result->isAuthorized()) {
+    // Host: persistir accessKey, protocolNumber, submittedDocumentXml, responseXml, receivedAt, operationId
+}
+
+if ($result->isRejected()) {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    // $failure->code, recoveryGuide, ResolutionStep::relatedField
+    match ($policy?->mode) {
+        RetryMode::AfterCorrection => /* remontar issue() com dados corrigidos + novo forOperation */,
+        RetryMode::QueryBeforeRetry => /* byAccessKey() antes de reemitir */,
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar conforme política */,
+        RetryMode::Never, null => /* definitivo; não reenviar */,
+    };
+}
+
+if ($result->isProcessing()) {
+    // Host: consultar por chave/protocolo; não emitir de novo às cegas
+}
+```
+
+## Campos a persistir (host)
+
+| Campo | Quando |
+|---|---|
+| `accessKey` | Autorizado (e às vezes rejeição com chave gerada) |
+| `protocolNumber` | Autorizado |
+| `submittedDocumentXml` | XML do CT-e enviado |
+| `responseXml` | Auditoria / protocolo |
+| `receivedAt` | Timestamp de retorno |
+| `metadata.operationId` | Idempotência no host |
+
+O SDK **não** persiste. O host grava os campos da tabela acima a partir do Result.
+
+## Corrigir e reenviar
+
+Com `AfterCorrection`, remonte `$cte->issue()…` com dados corrigidos e novo `forOperation`:
+
+```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+
+try {
+    $result = $cte->issue()
+        ->forOperation('ot-123-issue-retry')
+        ->inHomologation()
+        // … mesma cadeia com campos corrigidos …
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('issue');
+    // Host: alertar; filar conforme $failure->retryPolicy
+    throw $e;
+}
+
+if ($result->isAuthorized()) {
+    // Host: persistir artefatos da nova autorização
+}
+
+if ($result->isRejected()) {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    // Host: repetir match de RetryMode; Never → não reenviar
+}
+```
+
+Não reutilize XML assinado antigo após mudar dados fiscais.
+
+<Tip>
+Se você mantém um `IssueCteCommand` materializado (Handlers no [Laravel Bridge](/fiscal/laravel-bridge)), `revise()` reconstrói a intenção sem mutar o original. Na API padrão, remonte `$cte->issue()…`.
+</Tip>
+
+Página transversal: [Resultados](/fiscal/resultados).

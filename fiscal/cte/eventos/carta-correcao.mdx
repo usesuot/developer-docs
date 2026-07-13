@@ -1,0 +1,60 @@
+---
+title: "Carta de correção (CC-e)"
+sidebarTitle: "Carta de correção"
+description: "Registre CC-e com $cte->correct() e corrections([new CteEventCorrection(...)])."
+---
+
+## O quê / quando
+
+Corrija campos permitidos de um CT-e autorizado sem cancelar. Cada item é um `CteEventCorrection` (`grupoAlterado`, `campoAlterado`, `valorAlterado`).
+
+## Exemplo
+
+```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+use Suot\Fiscal\Cte\ValueObject\CteEventCorrection;
+
+try {
+    $result = $cte->correct()
+        ->forOperation('cce-1')
+        ->inHomologation()
+        ->accessKey($chave44)
+        ->emitterCnpj($cnpj)
+        ->corrections([
+            new CteEventCorrection(
+                changedGroup: 'ide',
+                changedField: 'xObs',
+                changedValue: 'Observacao corrigida em homologacao',
+            ),
+        ])
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('correct');
+    // Host: alertar; QueryBeforeRetry se timeout após envio
+    throw $e;
+}
+
+if (! $result->isRejected()) {
+    // Host: persistir protocolNumber do evento, responseXml, accessKey, operationId
+}
+
+if ($result->isRejected()) {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterCorrection => /* ajustar corrections[] e tentar de novo */,
+        RetryMode::QueryBeforeRetry => /* reconciliar eventos antes de reenviar */,
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar conforme política */,
+        RetryMode::Never, null => /* definitivo; não reenviar */,
+    };
+}
+```
+
+Construtor: `changedGroup`, `changedField`, `changedValue`, e opcionalmente `changedItemNumber` (coleções).
+
+<Warning>
+Só corrija grupos/campos permitidos pelo MOC/schema. Valores fiscais críticos (valores, chave vinculada, etc.) em geral exigem cancelamento e nova emissão — valide na especificação oficial.
+</Warning>
+
+Resultado: `CorrectCteResult` — `isRejected()`, `failure()`, protocolo do evento quando OK.

@@ -1,8 +1,8 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "luma",
+  "theme": "mint",
   "name": "SUOT Developers",
-  "description": "Documentação técnica da SUOT para SDKs fiscais, ANTT e Developer Platform. Da ordem ao resultado.",
+  "description": "Documentação técnica da SUOT para SDKs fiscais e Developer Platform. Da ordem ao resultado.",
   "colors": {
     "primary": "#FB0927",
     "light": "#FF2741",
@@ -27,7 +27,7 @@
   "background": {
     "color": {
       "light": "#F5F7FA",
-      "dark": "#001145"
+      "dark": "#0c0c0c"
     }
   },
   "navbar": {
@@ -71,17 +71,47 @@
         "tab": "Fiscal SDK",
         "groups": [
           {
-            "group": "Visão Geral",
+            "group": "Visão geral",
             "pages": [
               "fiscal/visao-geral",
+              "fiscal/avaliar",
+              "fiscal/api-publica",
               "fiscal/instalacao",
               "fiscal/configuracao"
             ]
           },
           {
-            "group": "Documentos",
+            "group": "CT-e",
             "pages": [
-              "fiscal/cte",
+              "fiscal/cte/index",
+              "fiscal/cte/validacao",
+              "fiscal/cte/emissao",
+              "fiscal/cte/resultados",
+              "fiscal/cte/contingencia",
+              {
+                "group": "Consultas",
+                "pages": [
+                  "fiscal/cte/consultas/status-servico",
+                  "fiscal/cte/consultas/por-chave",
+                  "fiscal/cte/consultas/protocolo",
+                  "fiscal/cte/consultas/download-proc",
+                  "fiscal/cte/consultas/distribuicao-dfe"
+                ]
+              },
+              {
+                "group": "Eventos",
+                "pages": [
+                  "fiscal/cte/eventos/cancelamento",
+                  "fiscal/cte/eventos/carta-correcao",
+                  "fiscal/cte/eventos/comprovante-entrega",
+                  "fiscal/cte/eventos/insucesso-entrega"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Outros documentos",
+            "pages": [
               "fiscal/mdfe"
             ]
           },
@@ -93,44 +123,11 @@
             ]
           },
           {
-            "group": "Resultados e Erros",
+            "group": "Resultados e erros",
             "pages": [
               "fiscal/resultados",
               "fiscal/rejeicoes",
               "fiscal/retry"
-            ]
-          }
-        ]
-      },
-      {
-        "tab": "ANTT SDK",
-        "groups": [
-          {
-            "group": "Visão Geral",
-            "pages": [
-              "antt/visao-geral",
-              "antt/instalacao",
-              "antt/configuracao"
-            ]
-          },
-          {
-            "group": "Serviços",
-            "pages": [
-              "antt/ciot",
-              "antt/rntrc"
-            ]
-          },
-          {
-            "group": "Laravel",
-            "pages": [
-              "antt/laravel-bridge"
-            ]
-          },
-          {
-            "group": "Resultados e Erros",
-            "pages": [
-              "antt/resultados",
-              "antt/rejeicoes"
             ]
           }
         ]

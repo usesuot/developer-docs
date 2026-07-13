@@ -1,0 +1,67 @@
+---
+title: "API pública do Fiscal SDK"
+sidebarTitle: "API pública"
+description: "API padrão de CT-e: $cte->…->handle(). O que é @internal. Rejeição fiscal é Result; infraestrutura é exception."
+---
+
+A superfície pública do CT-e é o client `Suot\Fiscal\Cte\Application\Cte`: monte a intenção e encerre em `handle()`.
+
+## Client `$cte`
+
+```php
+use Suot\Fiscal\Cte\Application\Cte;
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+use Suot\Fiscal\Core\ValueObject\Uf;
+
+try {
+    $result = $cte->serviceStatus()
+        ->forOperation('status-1')
+        ->inHomologation()
+        ->issuerUf(new Uf('RS'))
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('service_status');
+    // Host: alertar; filar retry conforme $failure->retryPolicy
+    throw $e;
+}
+
+if ($result->isOperational()) {
+    // Host: seguir para emissão ou outras operações
+} else {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar e tentar de novo */,
+        RetryMode::Never, null => /* não emitir; tratar indisponibilidade */,
+        default => /* seguir orientação do recoveryGuide */,
+    };
+}
+```
+
+Portas no mesmo client: `issue()`, `validate()`, `cancel()`, `correct()`, `serviceStatus()`, `byAccessKey()`, `authorizationProtocol()`, `downloadProc()`, `distributeDfe()`, `registerEpec()`, `issueInContingency()`, eventos de entrega, etc.
+
+Namespace: `Suot\Fiscal\Cte\Application\Cte`.
+
+No Laravel, Handlers explícitos são opcionais — ver [Laravel Bridge](/fiscal/laravel-bridge).
+
+## O que é @internal
+
+Não use na aplicação hospedeira:
+
+| Evitar | Motivo |
+|---|---|
+| `Operation/*Service`, `*Input`, `*::execute()` | Pipeline fiscal interno |
+| `*InputMapper`, `IssueCteCommandBuilder`, `IssueCteCommandParts` | Wiring atrás do Handler |
+| `CTeBuilder`, `EmitirCTe*`, `AutorizarNFe*`, `AutorizarCte*` | Não existem na API pública |
+| `CteClient` como porta principal | A porta pública é `Cte` |
+
+<Warning>
+Rejeição fiscal válida volta como `Result` (`isRejected()`, `failure()`), não como exception. Exceptions são para infraestrutura, argumentos inválidos e estados impossíveis.
+</Warning>
+
+## Próximos passos
+
+- [Avaliar sem conta](/fiscal/avaliar) — trilha de aprendizado da API
+- [CT-e](/fiscal/cte) — jornada do documento
+- [Instalação](/fiscal/instalacao) — Composer + registry

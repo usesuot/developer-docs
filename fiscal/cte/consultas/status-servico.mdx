@@ -1,0 +1,45 @@
+---
+title: "Consultar status do serviço"
+sidebarTitle: "Status do serviço"
+description: "Pré-voo: $cte->serviceStatus() consulta se o autorizador de CT-e da UF está operacional."
+---
+
+## O quê / quando
+
+Antes de emitir, confirme se o serviço de autorização da UF do emitente está em operação.
+
+## Exemplo
+
+```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+use Suot\Fiscal\Core\ValueObject\Uf;
+
+try {
+    $result = $cte->serviceStatus()
+        ->forOperation('status-1')
+        ->inHomologation()
+        ->issuerUf(new Uf('RS'))
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('service_status');
+    // Host: alertar; filar retry conforme $failure->retryPolicy; não emitir às cegas
+    throw $e;
+}
+
+if ($result->isOperational()) {
+    // Host: seguir para emissão
+} else {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar e consultar de novo */,
+        RetryMode::Never, null => /* não emitir; tratar indisponibilidade */,
+        default => /* seguir recoveryGuide */,
+    };
+}
+```
+
+Resultado: `CteStatusResult` (`serviceCode`, `message`, `isOperational()`, `failure()`, `retryPolicy()`).
+
+Ver [Emissão](/fiscal/cte/emissao).

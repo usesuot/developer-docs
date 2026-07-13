@@ -1,156 +1,93 @@
 ---
-title: "Rejeições SEFAZ no SUOT Fiscal SDK: diagnóstico e ação"
+title: "Rejeições de CT-e"
 sidebarTitle: "Rejeições"
-description: "Interprete e trate as rejeições SEFAZ retornadas pelo SUOT Fiscal SDK: códigos cStat, causas comuns e como reconstruir o Command corrigido."
+description: "Trate cStat e falhas fiscais via failure() e retryPolicy(). Corrija remontando issue() — sem misturar com exception de infraestrutura."
 ---
 
-Rejeições SEFAZ são **resultados de negócio esperados**, não exceções de sistema. Quando a SEFAZ recusa um documento fiscal por inconsistência cadastral, schema inválido, chave duplicada ou qualquer outra regra de validação, o SUOT Fiscal SDK retorna essa resposta encapsulada em um objeto `Result` — com `cStat`, `xMotivo` e o XML de retorno disponíveis para inspeção imediata. Sua aplicação deve tratar cada rejeição de forma deliberada, corrigir os dados e reenviar o documento quando apropriado.
+## O quê / quando
 
-## O que é uma rejeição (vs. falha técnica)
+A SEFAZ (ou validação fiscal) recusou a operação. O Handler devolve Result rejeitado com código e mensagem. Use a orientação acionável antes de reenviar.
 
-É essencial distinguir os dois tipos de resultado negativo no SDK:
-
-| Característica | Rejeição esperada | Falha técnica |
-|---|---|---|
-| **Origem** | Regra de negócio / validação SEFAZ | Infraestrutura: timeout, HTTP 5xx, rede |
-| **Retorno no SDK** | `Result` com `isRejected() === true` | `InfrastructureException` lançada |
-| **cStat disponível** | Sim | Não |
-| **Deve retortar?** | Somente após corrigir os dados | Pode retentar com `RetryPolicy` |
-| **Exemplo** | CNPJ inválido, schema com campo faltando | Timeout de 30s, servidor SEFAZ indisponível |
-
-<Info>
-Uma rejeição SEFAZ significa que o webservice foi alcançado e processou a requisição — a resposta é definitiva para aqueles dados. Já uma `InfrastructureException` indica que não foi possível sequer obter uma resposta.
-</Info>
-
-## Códigos cStat comuns
-
-A tabela abaixo lista códigos `cStat` frequentes no ciclo de autorização de NF-e e CT-e. Consulte o Manual de Orientação do Contribuinte (MOC) da SEFAZ para a relação completa e atualizada.
-
-| cStat | Descrição | Ação recomendada |
-|---|---|---|
-| `100` | Autorizado o uso do DF-e | — (sucesso, não é rejeição) |
-| `101` | Cancelamento homologado | — (sucesso de cancelamento) |
-| `104` | Lote recebido com sucesso | Consultar processamento do lote |
-| `110` | Uso Denegado | Verificar situação fiscal do emitente junto à SEFAZ |
-| `204` | Duplicidade de NF-e | Verificar se a chave já foi emitida; recuperar XML autorizado |
-| `217` | NF já existe no sistema SEFAZ | Verificar chave e recuperar o XML autorizado já registrado |
-| `225` | Rejeição: Falha no Schema XML | Verificar campos obrigatórios e estrutura do XML |
-| `252` | Rejeição: Layout inválido | Corrigir versão ou estrutura do layout conforme MOC vigente |
-| `431` | Rejeição: Emissão em contingência | Verificar modo de emissão e regras de contingência aplicáveis |
-| `539` | Rejeição: CNPJ do emitente inválido | Verificar e corrigir CNPJ do emitente |
-| `999` | Rejeição: Erro não catalogado | Analisar `xMotivo` detalhadamente; acionar suporte se persistir |
-
-<Note>
-Os códigos `100`, `101` e `104` indicam sucesso ou processamento intermediário — não são rejeições. O SUOT Fiscal SDK os mapeia corretamente para `isSuccess()` ou para o estado de lote pendente, conforme o contexto.
-</Note>
-
-## Tratando rejeições
-
-<Warning>
-Nunca ignore uma rejeição silenciosamente. Registrar `cStat` e `xMotivo` em todos os casos é obrigatório — esses valores são o ponto de partida para diagnóstico, auditoria e correção dos dados fiscais.
-</Warning>
-
-Use `isRejected()` para interceptar rejeições e registre sempre `cStat` e `xMotivo` antes de tomar qualquer ação:
+## Ler a rejeição
 
 ```php
-use SUOT\Fiscal\Handler\AutorizacaoHandler;
-use SUOT\Fiscal\Command\AutorizarNFeCommand;
-use SUOT\Fiscal\Exception\InfrastructureException;
-
-$command = new AutorizarNFeCommand(/* ... */);
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
 
 try {
-    $result = $handler->handle($command);
-
-    if ($result->isSuccess()) {
-        // Documento autorizado — persista chave, protocolo e XML
-        $chave     = $result->chave();
-        $protocolo = $result->protocolo();
-        $xml       = $result->xmlAutorizado();
-
-        logger()->info('NF-e autorizada', compact('chave', 'protocolo'));
-
-    } elseif ($result->isRejected()) {
-        $cStat  = $result->status();
-        $motivo = $result->motivo();
-
-        // Sempre registre cStat e xMotivo
-        logger()->warning('NF-e rejeitada pela SEFAZ', [
-            'cStat'   => $cStat,
-            'xMotivo' => $motivo,
-            'chave'   => $command->chave(),
-        ]);
-
-        // Roteie pelo código de rejeição
-        match ($cStat) {
-            204 => $this->handleDuplicidade($result),
-            539 => $this->notificarCnpjInvalido($command),
-            225 => $this->notificarSchemaInvalido($result),
-            default => $this->encaminharParaRevisaoManual($cStat, $motivo),
-        };
-    }
-
+    $result = $cte->issue()
+        ->forOperation('ot-123')
+        ->inHomologation()
+        // … cadeia …
+        ->handle();
 } catch (InfrastructureException $e) {
-    // Falha de infraestrutura — tratar separadamente
-    logger()->error('Falha técnica ao autorizar NF-e', ['error' => $e->getMessage()]);
+    $failure = $e->toFailure('issue');
+    // Host: alertar; não tratar como rejeição fiscal
+    throw $e;
+}
+
+if ($result->isRejected()) {
+    $failure = $result->failure();
+    // $failure->code, $failure->message
+    // $failure->recoveryGuide->summary
+    // steps com relatedField (caminho público, ex.: shipper.stateRegistration)
+
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterCorrection => /* corrigir e remontar emissão */,
+        RetryMode::QueryBeforeRetry => /* byAccessKey() antes de reemitir */,
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar conforme política */,
+        RetryMode::Never, null => /* definitivo; não reenviar */,
+    };
 }
 ```
 
-## Reconstruindo o Command corrigido
+## Corrigir e reemitir
 
-O SUOT Fiscal SDK adota Commands **imutáveis**: uma vez construído, um Command não pode ser alterado. Isso garante rastreabilidade e evita mutações acidentais entre tentativas. Para corrigir e reenviar, construa um **novo** Command com os dados corretos:
+Com `AfterCorrection`, remonte a cadeia com dados corrigidos e **novo** `forOperation`:
 
 ```php
-// Command original com CNPJ incorreto (cStat 539)
-$commandOriginal = new AutorizarNFeCommand(
-    emitenteCnpj: '00.000.000/0000-00',  // inválido
-    destinatarioCpf: '123.456.789-09',
-    valorTotal: 1500.00,
-    itens: $itens,
-    // ...
-);
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+use Suot\Fiscal\Cte\Data\CteParty;
 
-$result = $handler->handle($commandOriginal);
+try {
+    $result = $cte->issue()
+        ->forOperation('ot-123-retry') // novo operationId
+        ->inHomologation()
+        // … mesma cadeia, com forShipper($shipperCorrigido) …
+        ->forShipper($shipperCorrigido)
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('issue');
+    // Host: alertar; filar conforme $failure->retryPolicy
+    throw $e;
+}
 
-if ($result->isRejected() && $result->status() === 539) {
-    // Reconstrua o Command com o CNPJ corrigido
-    $commandCorrigido = new AutorizarNFeCommand(
-        emitenteCnpj: '12.345.678/0001-95',  // corrigido
-        destinatarioCpf: '123.456.789-09',
-        valorTotal: 1500.00,
-        itens: $itens,
-        // ...
-    );
+if ($result->isAuthorized()) {
+    // Host: persistir artefatos da nova autorização
+}
 
-    $resultCorrigido = $handler->handle($commandCorrigido);
+if ($result->isRejected()) {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    // Host: repetir o match de RetryMode; Never → não reenviar
 }
 ```
 
 <Warning>
-Nunca reenvie o mesmo Command sem corrigir os dados que causaram a rejeição. A SEFAZ retornará o mesmo `cStat` repetidamente — o que gera consumo desnecessário de cota de requisições e pode indicar um problema de loop na sua lógica de negócio.
+Não reutilize o XML assinado anterior após alterar dados fiscais. Gere novo documento com novo `operationId`.
 </Warning>
 
 <Tip>
-Para rejeições do tipo `204` (duplicidade), **não** reconstrua o Command. Em vez disso, consulte a chave já existente com o serviço de consulta de NF-e e recupere o XML autorizado que já está na base da SEFAZ.
+Se você já materializou um `IssueCteCommand` (por exemplo via Handlers no [Laravel Bridge](/fiscal/laravel-bridge)), `revise()` reconstrói a intenção sem mutar o command original — útil com `withOperationId()` e campos corrigidos. Na API padrão, prefira remontar `$cte->issue()…`.
 </Tip>
 
-## Rejeições vs. falhas técnicas — resumo
+## Não confundir
 
-| | Rejeição esperada | Falha técnica (`InfrastructureException`) |
-|---|---|---|
-| **cStat disponível** | ✅ Sim | ❌ Não |
-| **xMotivo disponível** | ✅ Sim | ❌ Não (mensagem de infraestrutura) |
-| **Ação imediata** | Corrigir dados, reconstruir Command | Retente com `RetryPolicy` ou investigue conectividade |
-| **Deve fazer retry automático?** | ❌ Nunca (mesmo resultado) | ✅ Sim, para falhas transitórias |
-| **Exemplo de código** | `$result->isRejected()` | `catch (InfrastructureException $e)` |
+| Rejeição fiscal | Infraestrutura |
+|---|---|
+| Result + `failure()` | `InfrastructureException` |
+| Corrigir / consultar / aguardar | Retry de rede, cert, timeout com política do host |
 
-## Próximos passos
-
-<CardGroup cols={2}>
-  <Card title="Resultados de operações" icon="circle-check" href="/fiscal/resultados">
-    Entenda a anatomia do Result e como inspecionar sucesso, rejeição e falha técnica.
-  </Card>
-  <Card title="Retry Policy" icon="rotate" href="/fiscal/retry">
-    Configure retentativas automáticas para falhas transitórias de infraestrutura.
-  </Card>
-</CardGroup>
+Detalhes de modos: [Retry](/fiscal/retry).

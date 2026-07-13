@@ -1,174 +1,135 @@
 ---
-title: "Quickstart SUOT Fiscal SDK: emitindo o primeiro CT-e"
+title: "Quickstart: mental model do Fiscal SDK (CT-e)"
 sidebarTitle: "Quickstart"
-description: "Instale o SUOT Fiscal SDK, configure o Composer com o registry privado e autorize seu primeiro CT-e de teste em menos de 15 minutos."
+description: "Entenda emissão, Result e rejeição com a API pública real — antes de configurar Composer ou criar conta."
 ---
 
-Este guia leva você do zero ao envio do primeiro CT-e de teste usando o SUOT Fiscal SDK para PHP. Você vai configurar o registry Composer privado, instalar os pacotes essenciais, declarar as credenciais da empresa e construir o seu primeiro Command. Todo o processo pode ser concluído em menos de 15 minutos em um ambiente local já preparado.
+Este quickstart mostra o **modelo mental** do Fiscal SDK com CT-e. Você não precisa de token Composer para acompanhar. Quando for instalar no seu projeto, vá para [Instalação](/fiscal/instalacao).
 
 <Info>
-  **Pré-requisitos antes de começar:**
-  - PHP **8.4 ou superior** instalado e disponível no `PATH`
-  - **Composer 2** instalado globalmente
-  - Acesso ao [Developer Portal](https://developers.suot.dev) com uma organização ativa
-  - Token Composer gerado para o seu usuário (você vai gerar um no Passo 2)
+  **Pré-requisitos para só ler e entender:** nenhum.  
+  **Para integrar no seu app:** PHP 8.4+, Composer 2, licença e token — [Instalação](/fiscal/instalacao).
 </Info>
 
-<Steps>
+## O que você vai aprender
 
-  <Step title="Acesse o Developer Portal e crie uma organização">
-    Acesse [developers.suot.dev](https://developers.suot.dev) e faça login. Se ainda não tiver uma organização, crie uma — a organização é a titular da licença e o ponto de partida para emitir tokens Composer.
+1. API padrão: `$cte->…->handle()`
+2. Rejeição fiscal é `Result`, não exception
+3. O host persiste chave/protocolo/XML e decide retry
 
-    Após criar a organização, certifique-se de que há uma licença do Fiscal SDK associada a ela. Sem uma licença ativa, o registry irá rejeitar as requisições de download dos pacotes.
+## Emitir com `$cte->issue()`
 
-    <Note>
-      Veja o guia completo em [Organizações](/platform/organizacoes) para entender papéis, membros e associação de licenças.
-    </Note>
-  </Step>
+```php
+use Suot\Fiscal\Cte\Application\Cte;
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+use Suot\Fiscal\Core\ValueObject\Uf;
+// … Data objects (CteEmitter, CteMunicipality, …)
 
-  <Step title="Gere um token Composer">
-    No Developer Portal, navegue até a seção de tokens da sua organização e gere um token Composer pessoal. Copie o valor gerado — ele será exibido apenas uma vez.
+/** @var Cte $cte */
+try {
+    $result = $cte->issue()
+        ->forOperation('ot-000123')
+        ->inHomologation()
+        ->numbered('1', '12345')
+        ->issuedIn(new Uf('RS'))
+        ->withOperation('5353', 'PRESTACAO DE SERVICO DE TRANSPORTE')
+        ->dispatchedFrom($dispatchMunicipality)
+        ->issuedBy($emitter)
+        ->from($origin)
+        ->to($destination)
+        ->forShipper($shipper)
+        ->deliverTo($receiver)
+        ->carrying($cargo)
+        ->charging($freight)
+        ->taxedBy($tax)
+        ->linkedToDocument($linkedNfe)
+        ->underRntrc('12345678')
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('issue');
+    // Host: alertar; filar retry conforme $failure->retryPolicy (timeout ambíguo → QueryBeforeRetry)
+    throw $e;
+}
 
-    <Warning>
-      Nunca inclua o token diretamente em arquivos versionados (`composer.json`, `auth.json` commitado, `.env` commitado). Nunca o registre em logs de aplicação ou de CI/CD. Se o token for exposto acidentalmente, revogue-o imediatamente no Developer Portal e emita um novo.
-    </Warning>
+if ($result->isAuthorized()) {
+    // Host: persistir accessKey, protocolNumber, submittedDocumentXml, responseXml, receivedAt, operationId
+}
 
-    Para gerenciar tokens depois, acesse [platform/tokens-composer](/platform/tokens-composer).
-  </Step>
+if ($result->isRejected()) {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterCorrection => /* remontar issue() com dados corrigidos + novo forOperation */,
+        RetryMode::QueryBeforeRetry => /* byAccessKey() antes de reemitir */,
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar conforme política */,
+        RetryMode::Never, null => /* definitivo; não reenviar */,
+    };
+}
 
-  <Step title="Configure o registry no composer.json">
-    Adicione o registry privado da SUOT ao `composer.json` do seu projeto. O Composer precisa saber onde buscar os pacotes `suot/*` antes de tentar o Packagist.
+if ($result->isProcessing()) {
+    // Host: consultar por chave/protocolo; não emitir de novo às cegas
+}
+```
 
-    ```json composer.json
-    {
-      "repositories": [
-        {
-          "type": "composer",
-          "url": "https://packages.suot.dev"
-        }
-      ],
-      "require": {}
-    }
-    ```
+Passo a passo com cadeia tipada completa: [Emissão de CT-e](/fiscal/cte/emissao).
 
-    Em seguida, configure a autenticação via variável de ambiente. **Nunca coloque o token diretamente no `composer.json`.**
+## Pré-voo antes de emitir
 
-    ```bash
-    export COMPOSER_AUTH='{"http-basic":{"packages.suot.dev":{"username":"token","password":"SEU_TOKEN_AQUI"}}}'
-    ```
+```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\ValueObject\Uf;
 
-    Substitua `SEU_TOKEN_AQUI` pelo token gerado no passo anterior. Em pipelines de CI/CD, defina `COMPOSER_AUTH` como variável de ambiente secreta na plataforma de CI.
+try {
+    $validation = $cte->validate()
+        ->issuerSetup()
+        // … parâmetros do emitente …
+        ->handle();
+} catch (InfrastructureException $e) {
+    // Host: alertar falha de certificado/local; não emitir
+    throw $e;
+}
 
-    <Note>
-      Se preferir usar `auth.json` localmente, certifique-se de adicioná-lo ao `.gitignore`. Veja detalhes em [Tokens Composer](/platform/tokens-composer).
-    </Note>
-  </Step>
+if (! $validation->isValid()) {
+    $failure = $validation->failure();
+    // Host: corrigir dados (AfterCorrection típico); não transmitir
+}
 
-  <Step title="Instale os pacotes do Fiscal SDK">
-    Com o registry configurado e a autenticação disponível, instale os pacotes necessários para emitir CT-e:
+try {
+    $status = $cte->serviceStatus()
+        ->forOperation('preflight-1')
+        ->inHomologation()
+        ->issuerUf(new Uf('RS'))
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('service_status');
+    // Host: alertar / filar retry; não emitir às cegas
+    throw $e;
+}
 
-    ```bash
-    composer require suot/fiscal-core suot/fiscal-sefaz suot/fiscal-cte
-    ```
+if (! $status->isOperational()) {
+    $failure = $status->failure();
+    // Host: aguardar ou filar conforme retryPolicy(); não emitir
+}
+```
 
-    - **`suot/fiscal-core`** — tipos base, Value Objects, interfaces e contratos do SDK
-    - **`suot/fiscal-sefaz`** — comunicação com os webservices da SEFAZ
-    - **`suot/fiscal-cte`** — commands, handlers e schemas específicos de CT-e
+## Depois da autorização
 
-    O Composer resolverá as dependências entre os pacotes automaticamente. Nenhuma configuração adicional de autoload é necessária além do padrão PSR-4 já gerenciado pelo Composer.
-  </Step>
+| Próximo passo | Página |
+|---|---|
+| Baixar `procCTe` | [Download proc](/fiscal/cte/consultas/download-proc) |
+| Cancelar | [Cancelamento](/fiscal/cte/eventos/cancelamento) |
+| CC-e | [Carta de correção](/fiscal/cte/eventos/carta-correcao) |
+| Contingência | [Contingência](/fiscal/cte/contingencia) |
+| Trilha didática completa | [Avaliar o SDK](/fiscal/avaliar) |
 
-  <Step title="Configure as credenciais da empresa">
-    Antes de construir o primeiro Command, informe os dados da empresa emitente. Em um projeto framework-agnostic, você instancia a configuração diretamente:
+## Quando estiver pronto para instalar
 
-    ```php
-    <?php
-
-    use Suot\Fiscal\Core\Config\EmpresaConfig;
-    use Suot\Fiscal\Core\Config\AmbienteConfig;
-    use Suot\Fiscal\Core\ValueObject\Cnpj;
-    use Suot\Fiscal\Core\ValueObject\CaminhoArquivo;
-
-    $empresa = new EmpresaConfig(
-        cnpj: new Cnpj('00000000000000'),             // CNPJ da empresa (somente dígitos)
-        razaoSocial: 'Transportadora Exemplo Ltda',
-        certificadoPath: new CaminhoArquivo('/path/para/certificado.pfx'),
-        certificadoSenha: 'senha-do-certificado',      // use variável de ambiente em produção
-    );
-
-    $ambiente = AmbienteConfig::homologacao();
-    ```
-
-    <Warning>
-      Nunca inclua senhas de certificados diretamente no código-fonte. Em produção, use variáveis de ambiente ou um gerenciador de segredos. Os valores acima são apenas ilustrativos.
-    </Warning>
-  </Step>
-
-  <Step title="Construa e envie um Command de CT-e">
-    Com a configuração em mãos, construa o Command de autorização, passe ao Handler e aguarde o Result:
-
-    ```php
-    <?php
-
-    use Suot\Fiscal\Cte\Command\AutorizarCteCommand;
-    use Suot\Fiscal\Cte\Handler\AutorizarCteHandler;
-    use Suot\Fiscal\Core\ValueObject\Cnpj;
-    use Suot\Fiscal\Core\ValueObject\Cep;
-    use Suot\Fiscal\Core\ValueObject\Valor;
-    use Suot\Fiscal\Core\ValueObject\Peso;
-
-    // Construa o Command com named arguments — totalmente tipado
-    $command = new AutorizarCteCommand(
-        empresaConfig: $empresa,
-        ambienteConfig: $ambiente,
-        tomador: new Cnpj('11111111000100'),           // CNPJ do tomador (placeholder)
-        remetente: new Cnpj('22222222000100'),         // CNPJ do remetente (placeholder)
-        destinatario: new Cnpj('33333333000100'),      // CNPJ do destinatário (placeholder)
-        cepOrigem: new Cep('01310-100'),
-        cepDestino: new Cep('20040-020'),
-        valorCarga: new Valor(1500.00),
-        pesoBruto: new Peso(200.0),
-    );
-
-    // Instancie o Handler (ou receba por injeção de dependência)
-    $handler = new AutorizarCteHandler();
-
-    // Execute — retorna um Result, nunca lança exceção por rejeição esperada
-    $result = $handler->handle($command);
-    ```
-  </Step>
-
-  <Step title="Inspecione o Result">
-    O Handler retorna sempre um objeto `Result` tipado. Rejeições esperadas pela SEFAZ são representadas como resultado — não como exceção. Falhas técnicas de infraestrutura lançam `InfrastructureException`.
-
-    ```php
-    <?php
-
-    use Suot\Fiscal\Core\Result\ResultStatus;
-
-    if ($result->isSuccess()) {
-        // CT-e autorizado com sucesso
-        echo 'Chave de acesso: ' . $result->chaveAcesso()->valor();
-        echo 'Protocolo: ' . $result->protocolo()->numero();
-        echo 'XML autorizado disponível em: ' . $result->xmlPath()->valor();
-    } else {
-        // Rejeição retornada pela SEFAZ — trate com a lógica de negócio adequada
-        echo 'Rejeição: ' . $result->codigoRejeicao()->valor();
-        echo 'Motivo: ' . $result->motivoRejeicao();
-    }
-    ```
-
-    <Note>
-      Em ambiente de homologação, a SEFAZ pode retornar rejeições específicas para dados de teste. Consulte o [Guia de Homologação](/guias/homologacao) para configurar cenários de teste corretamente.
-    </Note>
-  </Step>
-
-</Steps>
-
-<Tip>
-  Antes de ir para produção, complete o ambiente de homologação: configure certificado digital de teste (emitido pela ICP-Brasil para homologação), valide o schema XML e teste os principais cenários de rejeição. Veja o passo a passo em [Guia de Homologação](/guias/homologacao).
-</Tip>
-
-<Note>
-  Para gerenciar, renovar ou revogar tokens Composer — incluindo tokens de CI/CD —, acesse [Tokens Composer](/platform/tokens-composer).
-</Note>
+<CardGroup cols={2}>
+  <Card title="Instalação Composer" icon="download" href="/fiscal/instalacao">
+    Registry `packages.suot.dev`, token e `composer require`.
+  </Card>
+  <Card title="Developer Portal" icon="building-columns" href="https://developers.suot.dev">
+    Organização, licença e tokens.
+  </Card>
+</CardGroup>

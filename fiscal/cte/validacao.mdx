@@ -1,0 +1,65 @@
+---
+title: "Validar dados antes de persistir"
+sidebarTitle: "Validação"
+description: "Use $cte->validate() para CNPJ, UF, IE, RNTRC, certificado, chave, NSU e setup do emitente — sem chamar a SEFAZ."
+---
+
+## O quê / quando
+
+Valide dados **antes** de gravar no host ou emitir. Não há rede SEFAZ: o retorno é `ValidationResult` (`isValid()`, `failure()` quando inválido).
+
+## Exemplo
+
+```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+
+try {
+    $result = $cte->validate()->issuerSetup()
+        ->withCnpj('04.252.011/0001-10')
+        ->withStateRegistration('0961234567')
+        ->inUf('RS')
+        ->underRntrc('12345678')
+        ->withPkcs12('/caminho/certificado.pfx')
+        ->protectedBy('senha')
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('validate');
+    // Host: alertar (certificado/arquivo local); não persistir setup inválido
+    throw $e;
+}
+
+if ($result->isValid()) {
+    // Host: pode persistir setup / seguir para pré-voo SEFAZ
+}
+
+if (! $result->isValid()) {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterCorrection => /* corrigir CNPJ/IE/RNTRC/cert e validar de novo */,
+        RetryMode::Never, null => /* não emitir com dados inválidos */,
+        default => /* seguir recoveryGuide */,
+    };
+}
+```
+
+Outras portas no mesmo `validate()`:
+
+| Método | Uso |
+|---|---|
+| `cnpj()` | `->withCnpj('…')` |
+| `uf()` | UF do emitente / rota |
+| `stateRegistration()` | Inscrição estadual |
+| `rntrc()` | `->underRntrc('…')` |
+| `certificate()` | `->withPkcs12()` + `->protectedBy()` |
+| `accessKey()` | Chave de acesso CT-e |
+| `nsu()` | NSU de distribuição |
+
+## Result
+
+- `isValid()` — dado aceito para persistência local
+- `normalizedValue` — quando aplicável (ex.: CNPJ só dígitos)
+- `failure()` — orientação acionável (`AfterCorrection` típico)
+
+Trilha: [Avaliar](/fiscal/avaliar) · [Emissão](/fiscal/cte/emissao).

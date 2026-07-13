@@ -1,151 +1,84 @@
 ---
-title: "Instalar o SUOT Fiscal SDK no projeto PHP com Composer"
+title: "Instalar o Fiscal SDK"
 sidebarTitle: "Instalação"
-description: "Adicione o SUOT Fiscal SDK ao seu projeto via Composer: configure o registry privado, instale os pacotes necessários e verifique os requisitos de ambiente."
+description: "Requisitos, registry packages.suot.dev, token Composer e require dos pacotes usesuot/fiscal-*. Licença não é o primeiro passo."
 ---
 
-O SUOT Fiscal SDK é distribuído exclusivamente pelo registry privado **packages.suot.dev** e requer autenticação com um token Composer vinculado à sua licença SUOT. O processo de instalação é padrão Composer, com um único passo adicional de configuração do repositório. Este guia cobre tudo que você precisa para ter o SDK funcionando em um projeto PHP do zero.
+## Requisitos
 
-## Pré-requisitos
+1. **PHP 8.4+** e **Composer 2**
+2. Extensões: `openssl`, `soap`, `curl`, `mbstring`, `dom`
+3. **Só na hora de baixar pacotes:** organização + licença + [token Composer](/platform/tokens-composer)
 
-Certifique-se de que o seu ambiente atende aos requisitos abaixo antes de iniciar a instalação:
+Ler a documentação **não** exige conta. O registry privado exige autenticação.
 
-- **PHP 8.4** ou superior — verifique com `php -v`
-- **Composer 2** — verifique com `composer -V` (Composer 1 não é suportado)
-- **Token Composer SUOT** — gere o seu no painel em [developers.suot.dev](/platform/tokens-composer)
-- **Licença SUOT ativa** — necessária para autenticar o acesso ao registry; gerencie suas licenças em [developers.suot.dev](/platform/licencas)
+<CardGroup cols={2}>
+  <Card title="Contratar" icon="credit-card" href="https://developers.suot.dev">
+    Organização, assinatura e licença no Developer Portal.
+  </Card>
+  <Card title="Continuar na API" icon="book-open" href="/fiscal/api-publica">
+    Entenda `$cte->…->handle()` antes de instalar.
+  </Card>
+</CardGroup>
 
-<Note>
-  As extensões PHP `openssl`, `soap`, `curl`, `mbstring` e `dom` são necessárias em tempo de execução. A maioria dos ambientes de produção e desenvolvimento já as inclui por padrão.
-</Note>
-
-## Instalação passo a passo
+## Instalar
 
 <Steps>
-  <Step title="Configure o registry privado">
-    Adicione o repositório privado da SUOT ao `composer.json` do seu projeto. Se o arquivo ainda não existir, crie-o na raiz do projeto.
-
-    ```json composer.json
-    {
-      "repositories": [
-        {
-          "type": "composer",
-          "url": "https://packages.suot.dev"
-        }
-      ]
-    }
+  <Step title="Registry">
+    ```bash
+    composer config repositories.suot composer https://packages.suot.dev
     ```
-
-    <Tip>
-      Você também pode adicionar o repositório via linha de comando: `composer config repositories.suot composer https://packages.suot.dev`
-    </Tip>
   </Step>
 
-  <Step title="Autentique com seu token Composer">
-    Configure a autenticação com o token obtido em [developers.suot.dev](/platform/tokens-composer). A forma recomendada é via variável de ambiente, evitando que credenciais sejam gravadas em arquivos versionados.
-
+  <Step title="Autenticação">
     ```bash
-    export COMPOSER_AUTH='{"http-basic":{"packages.suot.dev":{"username":"token","password":"SEU_TOKEN_SUOT_AQUI"}}}'
+    export COMPOSER_AUTH='{"http-basic":{"packages.suot.dev":{"username":"token","password":"SEU_TOKEN"}}}'
     ```
 
     <Warning>
-      Nunca comite credenciais no repositório. Substitua `SEU_TOKEN_SUOT_AQUI` pelo valor real apenas em ambientes seguros (CI/CD secrets, variáveis de ambiente do servidor). O arquivo `auth.json` local gerado pelo Composer também não deve ser versionado — adicione-o ao `.gitignore`.
+    Não versione tokens. Em CI, use secret `COMPOSER_AUTH`.
     </Warning>
-
-    Em pipelines de CI/CD, injete `COMPOSER_AUTH` como secret da plataforma (GitHub Actions, GitLab CI, etc.) em vez de armazená-lo em arquivos.
   </Step>
 
-  <Step title="Instale os pacotes">
-    Instale os pacotes de acordo com os documentos fiscais que o seu projeto precisa emitir. O pacote `suot/fiscal-core` e `suot/fiscal-sefaz` são dependências base obrigatórias para qualquer combinação.
-
-    **Somente CT-e:**
+  <Step title="Require">
+    CT-e:
 
     ```bash
-    composer require suot/fiscal-core suot/fiscal-sefaz suot/fiscal-cte
+    composer require usesuot/fiscal-core usesuot/fiscal-sefaz usesuot/fiscal-cte
     ```
 
-    **Somente MDF-e:**
+    Laravel (opcional):
 
     ```bash
-    composer require suot/fiscal-core suot/fiscal-sefaz suot/fiscal-mdfe
+    composer require usesuot/fiscal-laravel
     ```
-
-    **CT-e e MDF-e juntos:**
-
-    ```bash
-    composer require suot/fiscal-core suot/fiscal-sefaz suot/fiscal-cte suot/fiscal-mdfe
-    ```
-
-    O Composer resolverá as dependências e instalará os pacotes a partir do registry `packages.suot.dev`.
-
-    <Tip>
-      Em ambientes de produção, prefixe o comando com `--no-dev` e considere fixar a versão com o operador de compatibilidade (`^`) para garantir builds reproduzíveis. Consulte o painel SUOT para a versão atual disponível na sua licença.
-    </Tip>
   </Step>
 
-  <Step title="Verifique a instalação">
-    Após a instalação, confirme que o autoload do Composer consegue resolver as classes do SDK com um pequeno script de verificação:
-
-    ```php verify.php
+  <Step title="Verificar">
+    ```php
     <?php
+    require __DIR__ . '/vendor/autoload.php';
 
-    require_once __DIR__ . '/vendor/autoload.php';
+    use Suot\Fiscal\Core\ValueObject\Cnpj;
 
-    use Suot\Fiscal\Core\ValueObjects\Cnpj;
-    use Suot\Fiscal\Sefaz\Environment;
-
-    echo 'SUOT Fiscal SDK instalado com sucesso.' . PHP_EOL;
-    echo 'Ambiente disponível: ' . Environment::Homologacao->value . PHP_EOL;
+    echo Cnpj::class, PHP_EOL;
     ```
-
-    Execute com:
-
-    ```bash
-    php verify.php
-    ```
-
-    Se a saída exibir a mensagem de sucesso sem erros de autoload, a instalação está correta.
   </Step>
 </Steps>
 
-## Laravel Bridge
+## CI
 
-Se o seu projeto usa **Laravel**, existe um pacote de integração dedicado que registra automaticamente o Service Provider, configura Facades e disponibiliza o arquivo `config/fiscal.php`:
+Injete `COMPOSER_AUTH` como secret. Token dedicado de CI — não compartilhe token pessoal.
 
-```bash
-composer require suot/fiscal-laravel
-```
+## Produção vs avaliação
 
-<Note>
-  O `suot/fiscal-laravel` depende dos demais pacotes fiscais. Instale-o em adição (não em substituição) aos pacotes de documento que você precisar. Consulte o guia completo em [Laravel Bridge](/fiscal/laravel-bridge).
-</Note>
-
-## Fixar versões em produção
-
-<Tip>
-  O SUOT Fiscal SDK está em **Early Access** e o versionamento semântico pode refletir mudanças de API entre versões menores durante este período. Para ambientes de produção, recomendamos fixar versões com o operador de compatibilidade (`^`) e revisar o changelog antes de atualizar.
-</Tip>
-
-Exemplo de restrição de versão no `composer.json`:
-
-```json composer.json
-{
-  "require": {
-    "suot/fiscal-core":   "^x.y",
-    "suot/fiscal-sefaz":  "^x.y",
-    "suot/fiscal-cte":    "^x.y"
-  }
-}
-```
+| Avaliação | Produção |
+|---|---|
+| Docs públicas + snippets inline (sem SEFAZ) | Pacotes versionados + certificado + autorizador real |
+| Estudo da API sem instalar | Homologação SEFAZ antes de `inProduction()` |
 
 <Note>
-  Substitua `x.y` pela versão disponível na sua licença. Consulte o painel em [developers.suot.dev](/platform/licencas) para verificar qual versão está liberada para o seu plano.
+Vencimento de atualização **não** é kill switch no runtime já instalado. Sem renovação você deixa de receber updates e suporte — o software instalado continua.
 </Note>
 
-## Próximos passos
-
-Com os pacotes instalados, configure as credenciais do emitente, o certificado digital e o ambiente SEFAZ:
-
-- [Configuração](/fiscal/configuracao) — CNPJ, certificado A1 e autorizador SEFAZ
-- [Laravel Bridge](/fiscal/laravel-bridge) — configuração nativa para projetos Laravel
-- [Emitir CT-e](/fiscal/cte) — construa e transmita seu primeiro CT-e
+Veja [Licenciamento](/conceitos/licenciamento) e [Configuração](/fiscal/configuracao).

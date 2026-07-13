@@ -1,0 +1,46 @@
+---
+title: "Consultar protocolo de autorização"
+sidebarTitle: "Protocolo"
+description: "Obtenha o protocolo de autorização do CT-e com $cte->authorizationProtocol()."
+---
+
+## O quê / quando
+
+Quando você precisa do protocolo (`nProt`) a partir da chave — cancelamento, eventos de entrega, reconciliação.
+
+## Exemplo
+
+```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+
+try {
+    $result = $cte->authorizationProtocol()
+        ->forOperation('prot-1')
+        ->inHomologation()
+        ->accessKey($chave44)
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('query');
+    // Host: alertar; filar consulta conforme $failure->retryPolicy
+    throw $e;
+}
+
+if ($result->isFound()) {
+    // Host: persistir protocolNumber para cancelamento / eventos
+}
+
+if (! $result->isFound()) {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar nova consulta */,
+        RetryMode::Never, null => /* não seguir com evento sem protocolo */,
+        default => /* seguir recoveryGuide */,
+    };
+}
+```
+
+Resultado: `CteQueryResult` (mesmo tipo da consulta por chave; o método no client é `authorizationProtocol()`).
+
+No Laravel, alias útil: `fiscal.cte.query.authorization_protocol` — ver [Laravel Bridge](/fiscal/laravel-bridge).

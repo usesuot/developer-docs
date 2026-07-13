@@ -134,22 +134,26 @@ Use o checklist abaixo como guia mínimo antes de liberar sua integração para 
 - [ ] Tratamento de RNTRC inválido ou suspenso
 
 <Tip>
-  Automatize os testes de homologação com **PHPUnit** invocando os handlers do SDK diretamente, sem camada HTTP adicional. O padrão CQRS do SUOT SDK (Command → Handler → Result) facilita a criação de testes unitários e de integração previsíveis.
+  Automatize os testes de homologação com **PHPUnit** usando o client `Cte` (ou Handlers no container), sem camada HTTP adicional.
 
   ```php
   use PHPUnit\Framework\TestCase;
-  use Suot\Fiscal\Cte\Command\EmitirCTeCommand;
-  use Suot\Fiscal\Cte\Handler\EmitirCTeHandler;
+  use Suot\Fiscal\Cte\Application\Cte;
 
-  final class EmitirCTeTest extends TestCase
+  final class IssueCteHomologationTest extends TestCase
   {
       public function testEmissaoComSucesso(): void
       {
-          $handler = new EmitirCTeHandler(config: $this->homologacaoConfig());
-          $result  = $handler->handle(command: $this->buildCommand());
+          /** @var Cte $cte */
+          $cte = $this->cte(); // Cte com adapters de homologação
 
-          $this->assertTrue($result->isAutorizado());
-          $this->assertSame(100, $result->cStat());
+          $result = $cte->issue()
+              ->forOperation('homolog-ot-0001')
+              ->inHomologation()
+              // … mesma cadeia tipada da emissão …
+              ->handle();
+
+          $this->assertTrue($result->isAuthorized());
       }
   }
   ```

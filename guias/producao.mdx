@@ -119,40 +119,50 @@ A SEFAZ e a ANTT retornam um código de status (`cStat`) e uma descrição (`xMo
 ### Padrão recomendado
 
 ```php
-use Suot\Fiscal\Cte\Handler\EmitirCTeHandler;
+use Suot\Fiscal\Cte\Application\Cte;
+use Suot\Fiscal\Cte\Operation\Issue\IssueCteResult;
 use Suot\Fiscal\Core\Exception\InfrastructureException;
-use Suot\Fiscal\Core\Result\EmitirCTeResult;
+use Suot\Fiscal\Core\Result\RetryMode;
 use Psr\Log\LoggerInterface;
 
-final class EmitirCTeService
+final class IssueCteService
 {
     public function __construct(
-        private readonly EmitirCTeHandler $handler,
-        private readonly LoggerInterface  $logger,
+        private readonly Cte $cte,
+        private readonly LoggerInterface $logger,
     ) {}
 
-    public function emitir(EmitirCTeCommand $command): EmitirCTeResult
+    public function issue(string $operationId): IssueCteResult
     {
         try {
-            $result = $this->handler->handle(command: $command);
-
-            if (! $result->isAutorizado()) {
-                $this->logger->warning('CT-e rejeitado', [
-                    'cStat'   => $result->cStat(),
-                    'xMotivo' => $result->xMotivo(),
-                    'chave'   => $command->chave()->value(),
-                ]);
-            }
-
-            return $result;
+            $result = $this->cte->issue()
+                ->forOperation($operationId)
+                ->inProduction()
+                // … cadeia tipada …
+                ->handle();
         } catch (InfrastructureException $e) {
             $this->logger->critical('Falha de infraestrutura SEFAZ', [
-                'message' => $e->getMessage(),
-                'chave'   => $command->chave()->value(),
+                'message'     => $e->getMessage(),
+                'operationId' => $operationId,
             ]);
-
             throw $e;
         }
+
+        if ($result->isAuthorized()) {
+            // Host: persistir accessKey, protocolNumber, submittedDocumentXml, responseXml
+        }
+
+        if ($result->isRejected()) {
+            $failure = $result->failure();
+            $this->logger->warning('CT-e rejeitado', [
+                'code'        => $failure?->code,
+                'operationId' => $operationId,
+                'retryMode'   => $result->retryPolicy()?->mode->value,
+            ]);
+            // Host: AfterCorrection / QueryBeforeRetry / Never conforme RetryMode
+        }
+
+        return $result;
     }
 }
 ```

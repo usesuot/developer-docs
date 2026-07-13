@@ -1,127 +1,68 @@
 ---
-title: "Resultados de operações fiscais no SUOT Fiscal SDK"
+title: "Actionable Result (CT-e)"
 sidebarTitle: "Resultados"
-description: "Entenda como o SUOT Fiscal SDK representa resultados de operações fiscais: sucesso, rejeição esperada e falha técnica com o padrão Command/Handler/Result."
+description: "Result tipado para CT-e: autorizado, rejeitado com failure()/retryPolicy(), processamento e falha de infraestrutura via exception."
 ---
 
-O SUOT Fiscal SDK adota o padrão **Command/Handler/Result** para eliminar ambiguidades no retorno de operações fiscais. Todo Handler devolve um objeto `Result` tipado — nunca um array, `null` ou valor booleano. Isso garante que sua aplicação saiba exatamente o que ocorreu com cada documento fiscal, sem precisar inspecionar campos opcionais ou interpretar convenções implícitas.
+Toda operação pública de CT-e devolve um `*Result` tipado. Rejeição fiscal **não** é exception.
 
-## Anatomia do Result
+## Estados
 
-O `Result` possui três estados possíveis, mutuamente exclusivos:
+| Situação | Como tratar |
+|---|---|
+| Autorizado / registrado | `isAuthorized()` (emissão) ou `!isRejected()` / `isFound()` / `isValid()` conforme o Result |
+| Rejeição SEFAZ / fiscal | `isRejected()` → `failure()` → `retryPolicy()` |
+| Processando / ambíguo | `isProcessing()` ou consultar (`QueryBeforeRetry`) |
+| Infra (timeout, rede, cert) | `InfrastructureException` — `try/catch` + `toFailure()` |
 
-### 1. Sucesso
-
-O documento foi aceito e autorizado pela SEFAZ. O `Result` contém a chave de acesso, o número de protocolo e o XML autorizado assinado digitalmente. Nenhuma exceção é lançada.
-
-### 2. Rejeição esperada
-
-A SEFAZ recusou o documento por uma **razão de negócio** — chave duplicada, inconsistência cadastral, schema inválido, entre outros. A rejeição é **retornada** no `Result` com o código `cStat` e a descrição `xMotivo`. Ela não é uma exceção; é um resultado previsto que sua aplicação deve tratar.
-
-### 3. Falha técnica
-
-Ocorreu um problema de **infraestrutura** fora do domínio fiscal: timeout na requisição, HTTP 5xx do servidor SEFAZ, queda de conectividade, problema de certificado digital. Nesses casos, o SDK lança uma `InfrastructureException` — ela **não** é encapsulada em um `Result`. Use `try/catch` separado e considere uma [`RetryPolicy`](/fiscal/retry) para falhas transitórias.
-
-<Info>
-A separação entre rejeição esperada e falha técnica é fundamental. Misturá-las leva a lógicas incorretas — como retentar uma rejeição por CNPJ inválido indefinidamente, ou ignorar um timeout sem política de reenvio.
-</Info>
-
-## Inspecionando um Result
+## Exemplo (emissão)
 
 ```php
-use SUOT\Fiscal\Handler\AutorizacaoHandler;
-use SUOT\Fiscal\Command\AutorizarNFeCommand;
-use SUOT\Fiscal\Exception\InfrastructureException;
-
-$command = new AutorizarNFeCommand(/* ... */);
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
 
 try {
-    $result = $handler->handle($command);
-
-    if ($result->isSuccess()) {
-        $chave     = $result->chave();
-        $protocolo = $result->protocolo();
-        $xml       = $result->xmlAutorizado();
-
-        // Persista $chave, $protocolo e $xml no seu banco de dados
-    } elseif ($result->isRejected()) {
-        $cStat  = $result->status();   // ex.: 225
-        $motivo = $result->motivo();   // ex.: "Rejeição: Falha no Schema XML"
-
-        // Trate a rejeição de negócio — log, notificação, correção
-    }
+    $result = $cte->issue()
+        ->forOperation('ot-123')
+        ->inHomologation()
+        // … cadeia …
+        ->handle();
 } catch (InfrastructureException $e) {
-    // Falha de infraestrutura: timeout, HTTP 5xx, conectividade
-    // Considere RetryPolicy para casos transitórios
-    logger()->error('Falha técnica SUOT', [
-        'message' => $e->getMessage(),
-        'code'    => $e->getCode(),
-    ]);
+    $failure = $e->toFailure('issue');
+    // Host: alertar; filar retry conforme $failure->retryPolicy (timeout ambíguo → QueryBeforeRetry)
+    throw $e;
+}
+
+if ($result->isAuthorized()) {
+    // Host: persistir accessKey, protocolNumber, submittedDocumentXml, responseXml, receivedAt, operationId
+}
+
+if ($result->isRejected()) {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterCorrection => /* remontar issue() com dados corrigidos + novo forOperation */,
+        RetryMode::QueryBeforeRetry => /* byAccessKey() antes de reemitir */,
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar conforme política */,
+        RetryMode::Never, null => /* definitivo; não reenviar */,
+    };
+}
+
+if ($result->isProcessing()) {
+    // Host: consultar por chave/protocolo; não emitir de novo às cegas
 }
 ```
 
-## Dados disponíveis no sucesso
+O mesmo envelope (`try/catch`, `failure()`, `retryPolicy()`, ações do host) aparece em cancelamento, eventos, EPEC, contingência, consultas e `downloadProc`.
 
-Quando `$result->isSuccess()` retorna `true`, os seguintes dados estão disponíveis:
+## O que o host faz
 
-| Método | Tipo | Descrição |
-|---|---|---|
-| `chave()` | `string` | Chave de acesso de 44 dígitos do DF-e |
-| `protocolo()` | `string` | Número do protocolo de autorização SEFAZ |
-| `xmlAutorizado()` | `string` | XML completo com `protNFe` / `protCTe` embutido |
-| `autorizadoEm()` | `DateTimeImmutable` | Data e hora de autorização (fuso UTC-3) |
-| `metadados()` | `array` | Dados auxiliares: ambiente, versão do layout, CNPJ autorizador |
-
-<Note>
-Persista sempre o `xmlAutorizado()` imediatamente após a autorização. Esse XML é o documento fiscal com validade jurídica e deve ser armazenado conforme os prazos de guarda estabelecidos pela legislação brasileira.
-</Note>
-
-## Dados disponíveis na rejeição
-
-Quando `$result->isRejected()` retorna `true`, os seguintes dados estão disponíveis:
-
-| Método | Tipo | Descrição |
-|---|---|---|
-| `status()` | `int` | Código `cStat` retornado pela SEFAZ |
-| `motivo()` | `string` | Descrição `xMotivo` retornada pela SEFAZ |
-| `xmlResposta()` | `string` \| `null` | XML de retorno da SEFAZ, quando disponível |
-| `rejeitadoEm()` | `DateTimeImmutable` | Data e hora do processamento |
-| `metadados()` | `array` | Ambiente, versão, identificador do lote |
-
-<Warning>
-Nunca ignore uma rejeição silenciosamente. Sempre registre `cStat` e `xMotivo` nos seus logs — eles são o ponto de partida para diagnóstico e correção. Consulte o guia de [Rejeições SEFAZ](/fiscal/rejeicoes) para uma referência completa de códigos e ações recomendadas.
-</Warning>
-
-## Falhas de infraestrutura e RetryPolicy
-
-`InfrastructureException` sinaliza que a comunicação com a SEFAZ não foi concluída — o documento **pode ou não ter sido processado**. Antes de qualquer nova tentativa, consulte a situação da NF-e pelo serviço de consulta de chave para evitar duplicidade.
-
-<Warning>
-A `RetryPolicy` destina-se exclusivamente a falhas de infraestrutura (`InfrastructureException`). **Nunca** a utilize para rejeições de negócio (`isRejected()`): se a SEFAZ retornou um `cStat`, o documento foi processado e a mesma tentativa sem correção dos dados produzirá o mesmo código de rejeição indefinidamente.
-</Warning>
-
-Para automatizar retentativas com backoff configurável, use a `RetryPolicy` do SDK:
-
-```php
-use SUOT\Fiscal\Retry\RetryPolicy;
-use SUOT\Fiscal\Exception\InfrastructureException;
-
-$policy = RetryPolicy::exponential(maxAttempts: 3, baseDelayMs: 500);
-
-$result = $policy->execute(
-    fn () => $handler->handle($command)
-);
-```
-
-Saiba mais em [Retry Policy](/fiscal/retry).
+- Persistir artefatos do Result ([CT-e → Resultados](/fiscal/cte/resultados))
+- Executar retry conforme [Retry](/fiscal/retry) — o SDK **não** reenvia sozinho
+- Corrigir dados remontando `$cte->issue()…` com novo `forOperation` quando `AfterCorrection`
 
 ## Próximos passos
 
-<CardGroup cols={2}>
-  <Card title="Rejeições SEFAZ" icon="triangle-exclamation" href="/fiscal/rejeicoes">
-    Interprete códigos cStat, diagnostique causas e reconstrua o Command corrigido.
-  </Card>
-  <Card title="Retry Policy" icon="rotate" href="/fiscal/retry">
-    Configure retentativas automáticas para falhas transitórias de infraestrutura.
-  </Card>
-</CardGroup>
+- [Resultados da emissão CT-e](/fiscal/cte/resultados) — campos a persistir
+- [Rejeições](/fiscal/rejeicoes) — `failure()` e correção
+- [Retry](/fiscal/retry) — modos de `retryPolicy()`
