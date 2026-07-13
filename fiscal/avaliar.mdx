@@ -29,8 +29,8 @@ Siga as páginas na ordem. Cada uma traz snippets inline com `$cte->…->handle(
   <Card title="3. Emissão" icon="file-plus" href="/fiscal/cte/emissao">
     `$cte->issue()…->handle()`.
   </Card>
-  <Card title="4. Resultados" icon="circle-check" href="/fiscal/cte/resultados">
-    `isAuthorized`, `failure()`, `retryPolicy()` e o que persistir.
+  <Card title="4. Resultados da emissão" icon="circle-check" href="/fiscal/cte/resultados">
+    `IssueCteResult`: `isAuthorized`, `failure()`, `retryPolicy()` e o que persistir.
   </Card>
   <Card title="5. Consultas" icon="magnifying-glass" href="/fiscal/cte/consultas/status-servico">
     Status, chave, protocolo, `procCTe` e DF-e.
@@ -48,11 +48,13 @@ Siga as páginas na ordem. Cada uma traz snippets inline com `$cte->…->handle(
 
 ## Depois de avaliar
 
+A trilha (passo 4) cobre o `IssueCteResult` da emissão. A página transversal abaixo generaliza o mesmo padrão de Result para consultas, eventos e demais operações.
+
 <CardGroup cols={2}>
   <Card title="Jornada CT-e" icon="map" href="/fiscal/cte">
     Mapa completo de validação, emissão, consultas e eventos.
   </Card>
-  <Card title="Resultados (transversal)" icon="shield-check" href="/fiscal/resultados">
-    Actionable Result em todas as operações.
+  <Card title="Actionable Result (todas as operações)" icon="shield-check" href="/fiscal/resultados">
+    Mesmo contrato de Result fora da emissão: estados, `failure()` e `retryPolicy()`.
   </Card>
 </CardGroup>
