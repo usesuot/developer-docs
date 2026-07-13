@@ -1,46 +1,49 @@
 ---
 title: "API pública do Fiscal SDK"
 sidebarTitle: "API pública"
-description: "Dois pontos de entrada equivalentes para CT-e: client $cte->…->handle() e Command/Query::create()…->build() + Handler. O que é @internal."
+description: "API padrão de CT-e: $cte->…->handle(). O que é @internal. Rejeição fiscal é Result; infraestrutura é exception."
 ---
 
-A superfície pública do CT-e tem **dois caminhos equivalentes**. Ambos montam a mesma intenção fiscal e terminam no mesmo `Handler` → `Result`.
+A superfície pública do CT-e é o client `Suot\Fiscal\Cte\Application\Cte`: monte a intenção e encerre em `handle()`.
 
-## Dois pontos de entrada
-
-<CardGroup cols={2}>
-  <Card title="A — Client Cte" icon="terminal">
-    `$cte->issue()…->handle()`, `$cte->cancel()…`, `$cte->serviceStatus()…`, etc.
-  </Card>
-  <Card title="B — Command/Query + Handler" icon="boxes">
-    `IssueCteCommand::create()…->build()` (ou `*Query::create()`) e depois `Handler::handle()` ou `$cte->handle($command)`.
-  </Card>
-</CardGroup>
+## Client `$cte`
 
 ```php
 use Suot\Fiscal\Cte\Application\Cte;
-use Suot\Fiscal\Cte\Application\Command\Issue\IssueCteCommand;
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
 use Suot\Fiscal\Core\ValueObject\Uf;
 
-// A — fluent no client
-$result = $cte->serviceStatus()
-    ->forOperation('status-1')
-    ->inHomologation()
-    ->issuerUf(new Uf('RS'))
-    ->handle();
+try {
+    $result = $cte->serviceStatus()
+        ->forOperation('status-1')
+        ->inHomologation()
+        ->issuerUf(new Uf('RS'))
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('service_status');
+    // Host: alertar; filar retry conforme $failure->retryPolicy
+    throw $e;
+}
 
-// B — Query explícita + despacho
-$query = \Suot\Fiscal\Cte\Application\Query\ServiceStatus\GetCteServiceStatusQuery::create()
-    ->forOperation('status-1')
-    ->inHomologation()
-    ->issuerUf(new Uf('RS'))
-    ->build();
-
-$result = $cte->handle($query);
-// ou: $serviceStatusHandler->handle($query);
+if ($result->isOperational()) {
+    // Host: seguir para emissão ou outras operações
+} else {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar e tentar de novo */,
+        RetryMode::Never, null => /* não emitir; tratar indisponibilidade */,
+        default => /* seguir orientação do recoveryGuide */,
+    };
+}
 ```
 
-Namespace do client: `Suot\Fiscal\Cte\Application\Cte`.
+Portas no mesmo client: `issue()`, `validate()`, `cancel()`, `correct()`, `serviceStatus()`, `byAccessKey()`, `authorizationProtocol()`, `downloadProc()`, `distributeDfe()`, `registerEpec()`, `issueInContingency()`, eventos de entrega, etc.
+
+Namespace: `Suot\Fiscal\Cte\Application\Cte`.
+
+No Laravel, Handlers explícitos são opcionais — ver [Laravel Bridge](/fiscal/laravel-bridge).
 
 ## O que é @internal
 
@@ -51,7 +54,7 @@ Não use na aplicação hospedeira:
 | `Operation/*Service`, `*Input`, `*::execute()` | Pipeline fiscal interno |
 | `*InputMapper`, `IssueCteCommandBuilder`, `IssueCteCommandParts` | Wiring atrás do Handler |
 | `CTeBuilder`, `EmitirCTe*`, `AutorizarNFe*`, `AutorizarCte*` | Não existem na API pública |
-| `CteClient` como entry point principal | O entry point é `Cte` |
+| `CteClient` como porta principal | A porta pública é `Cte` |
 
 <Warning>
 Rejeição fiscal válida volta como `Result` (`isRejected()`, `failure()`), não como exception. Exceptions são para infraestrutura, argumentos inválidos e estados impossíveis.
@@ -59,6 +62,6 @@ Rejeição fiscal válida volta como `Result` (`isRejected()`, `failure()`), nã
 
 ## Próximos passos
 
-- [Avaliar sem conta](/fiscal/avaliar) — trilha `bin/dx`
+- [Avaliar sem conta](/fiscal/avaliar) — trilha de aprendizado da API
 - [CT-e](/fiscal/cte) — jornada do documento
 - [Instalação](/fiscal/instalacao) — Composer + registry

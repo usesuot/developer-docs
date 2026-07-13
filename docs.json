@@ -2,7 +2,7 @@
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
   "name": "SUOT Developers",
-  "description": "Documentação técnica da SUOT para SDKs fiscais, ANTT e Developer Platform. Da ordem ao resultado.",
+  "description": "Documentação técnica da SUOT para SDKs fiscais e Developer Platform. Da ordem ao resultado.",
   "colors": {
     "primary": "#FB0927",
     "light": "#FF2741",
@@ -128,39 +128,6 @@
               "fiscal/resultados",
               "fiscal/rejeicoes",
               "fiscal/retry"
-            ]
-          }
-        ]
-      },
-      {
-        "tab": "ANTT SDK",
-        "groups": [
-          {
-            "group": "Visão Geral",
-            "pages": [
-              "antt/visao-geral",
-              "antt/instalacao",
-              "antt/configuracao"
-            ]
-          },
-          {
-            "group": "Serviços",
-            "pages": [
-              "antt/ciot",
-              "antt/rntrc"
-            ]
-          },
-          {
-            "group": "Laravel",
-            "pages": [
-              "antt/laravel-bridge"
-            ]
-          },
-          {
-            "group": "Resultados e Erros",
-            "pages": [
-              "antt/resultados",
-              "antt/rejeicoes"
             ]
           }
         ]

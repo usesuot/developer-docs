@@ -8,3 +8,6 @@ drafts/
 
 # Scraped source content (not documentation pages)
 sources/
+
+# ANTT SDK — fora do menu até o produto estar pronto
+antt/

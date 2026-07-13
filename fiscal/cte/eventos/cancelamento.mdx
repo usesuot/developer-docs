@@ -8,45 +8,43 @@ description: "Cancele CT-e autorizado com $cte->cancel(): chave, CNPJ, protocolo
 
 CT-e autorizado que precisa ser anulado (evento 110111). Irreversível. Justificativa com no mínimo 15 caracteres. Não cancele após carta de correção quando a regra do autorizador impedir (ex.: cStat 523).
 
-## Fluent
+## Exemplo
 
 ```php
-$result = $cte->cancel()
-    ->forOperation('cancel-1')
-    ->inHomologation()
-    ->accessKey($chave44)
-    ->emitterCnpj($cnpj)
-    ->protocol($nProt)
-    ->justification('Erro de digitação na emissão')
-    ->handle();
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+
+try {
+    $result = $cte->cancel()
+        ->forOperation('cancel-1')
+        ->inHomologation()
+        ->accessKey($chave44)
+        ->emitterCnpj($cnpj)
+        ->protocol($nProt)
+        ->justification('Erro de digitação na emissão')
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('cancel');
+    // Host: alertar; QueryBeforeRetry se timeout após envio — consultar antes de reenviar evento
+    throw $e;
+}
+
+if (! $result->isRejected()) {
+    // Host: persistir protocolNumber do evento, responseXml, accessKey, operationId; marcar CT-e cancelado
+}
 
 if ($result->isRejected()) {
     $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterCorrection => /* corrigir justificativa/protocolo e tentar de novo */,
+        RetryMode::QueryBeforeRetry => /* byAccessKey() / protocolo antes de reenviar */,
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar conforme política */,
+        RetryMode::Never, null => /* definitivo; não reenviar */,
+    };
 }
 ```
 
-## Command equivalente
+Resultado: `CancelCteResult` — `isRejected()`, `failure()`, `retryPolicy()`, `protocolNumber` do evento quando registrado.
 
-```php
-use Suot\Fiscal\Cte\Application\Command\Cancel\CancelCteCommand;
-
-$command = CancelCteCommand::create()
-    ->forOperation('cancel-1')
-    ->inHomologation()
-    ->accessKey($chave44)
-    ->emitterCnpj($cnpj)
-    ->protocol($nProt)
-    ->justification('Erro de digitação na emissão')
-    ->build();
-
-$result = $cte->handle($command);
-```
-
-## Result
-
-`CancelCteResult` — `isRejected()`, `failure()`, `retryPolicy()`, `protocolNumber` do evento quando registrado.
-
-## Exemplos
-
-- `examples/cte/cancel-event.php`
-- `bin/dx/05-cancel.php`
+Ver [Protocolo](/fiscal/cte/consultas/protocolo).

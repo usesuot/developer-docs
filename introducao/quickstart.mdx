@@ -8,90 +8,108 @@ Este quickstart mostra o **modelo mental** do Fiscal SDK com CT-e. Você não pr
 
 <Info>
   **Pré-requisitos para só ler e entender:** nenhum.  
-  **Para executar os scripts do monorepo:** clone `fiscal-sdk-php`, `composer install`, rode `php bin/dx/…` (stubs, sem SEFAZ).  
   **Para integrar no seu app:** PHP 8.4+, Composer 2, licença e token — [Instalação](/fiscal/instalacao).
 </Info>
 
 ## O que você vai aprender
 
-1. Dois entry points equivalentes: client `$cte` e `Command` + `Handler`
+1. API padrão: `$cte->…->handle()`
 2. Rejeição fiscal é `Result`, não exception
 3. O host persiste chave/protocolo/XML e decide retry
 
-## Entry point A — Client fluent
+## Emitir com `$cte->issue()`
 
 ```php
 use Suot\Fiscal\Cte\Application\Cte;
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
 use Suot\Fiscal\Core\ValueObject\Uf;
-use Suot\Fiscal\Cte\Data\CteEmitter;
-use Suot\Fiscal\Cte\Data\CteMunicipality;
-// … demais Data objects
+// … Data objects (CteEmitter, CteMunicipality, …)
 
 /** @var Cte $cte */
-$result = $cte->issue()
-    ->forOperation('ot-000123')
-    ->inHomologation()
-    ->numbered('1', '12345')
-    ->issuedIn(new Uf('RS'))
-    ->withOperation('5353', 'PRESTACAO DE SERVICO DE TRANSPORTE')
-    ->dispatchedFrom($dispatchMunicipality)
-    ->issuedBy($emitter)
-    ->from($origin)
-    ->to($destination)
-    ->forShipper($shipper)
-    ->deliverTo($receiver)
-    ->carrying($cargo)
-    ->charging($freight)
-    ->taxedBy($tax)
-    ->linkedToDocument($linkedNfe)
-    ->underRntrc('12345678')
-    ->handle();
+try {
+    $result = $cte->issue()
+        ->forOperation('ot-000123')
+        ->inHomologation()
+        ->numbered('1', '12345')
+        ->issuedIn(new Uf('RS'))
+        ->withOperation('5353', 'PRESTACAO DE SERVICO DE TRANSPORTE')
+        ->dispatchedFrom($dispatchMunicipality)
+        ->issuedBy($emitter)
+        ->from($origin)
+        ->to($destination)
+        ->forShipper($shipper)
+        ->deliverTo($receiver)
+        ->carrying($cargo)
+        ->charging($freight)
+        ->taxedBy($tax)
+        ->linkedToDocument($linkedNfe)
+        ->underRntrc('12345678')
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('issue');
+    // Host: alertar; filar retry conforme $failure->retryPolicy (timeout ambíguo → QueryBeforeRetry)
+    throw $e;
+}
 
 if ($result->isAuthorized()) {
-    // Host: gravar accessKey, protocolNumber, submittedDocumentXml
+    // Host: persistir accessKey, protocolNumber, submittedDocumentXml, responseXml, receivedAt, operationId
 }
 
 if ($result->isRejected()) {
     $failure = $result->failure();
-    // Host: orientar usuário com $failure->recoveryGuide; retry só se canRetry()
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterCorrection => /* remontar issue() com dados corrigidos + novo forOperation */,
+        RetryMode::QueryBeforeRetry => /* byAccessKey() antes de reemitir */,
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar conforme política */,
+        RetryMode::Never, null => /* definitivo; não reenviar */,
+    };
+}
+
+if ($result->isProcessing()) {
+    // Host: consultar por chave/protocolo; não emitir de novo às cegas
 }
 ```
 
-Cadeia completa de dados de exemplo: `examples/cte/support/homologation-issue-command.php` no SDK. Passo a passo na docs: [Emissão de CT-e](/fiscal/cte/emissao).
-
-## Entry point B — Command + Handler
-
-```php
-use Suot\Fiscal\Cte\Application\Command\Issue\IssueCteCommand;
-use Suot\Fiscal\Cte\Application\Command\Issue\IssueCteHandler;
-
-$command = IssueCteCommand::create()
-    ->forOperation('ot-000123')
-    ->inHomologation()
-    // … mesma cadeia de domínio …
-    ->build();
-
-$result = $handler->handle($command);
-```
-
-Mesma cadeia tipada; só muda quem chama `handle()`.
+Passo a passo com cadeia tipada completa: [Emissão de CT-e](/fiscal/cte/emissao).
 
 ## Pré-voo antes de emitir
 
 ```php
-$validation = $cte->validate()
-    ->issuerSetup()
-    // … parâmetros do emitente …
-    ->handle();
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\ValueObject\Uf;
 
-$status = $cte->serviceStatus()
-    ->forOperation('preflight-1')
-    ->inHomologation()
-    ->issuerUf(new Uf('RS'))
-    ->handle();
+try {
+    $validation = $cte->validate()
+        ->issuerSetup()
+        // … parâmetros do emitente …
+        ->handle();
+} catch (InfrastructureException $e) {
+    // Host: alertar falha de certificado/local; não emitir
+    throw $e;
+}
+
+if (! $validation->isValid()) {
+    $failure = $validation->failure();
+    // Host: corrigir dados (AfterCorrection típico); não transmitir
+}
+
+try {
+    $status = $cte->serviceStatus()
+        ->forOperation('preflight-1')
+        ->inHomologation()
+        ->issuerUf(new Uf('RS'))
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('service_status');
+    // Host: alertar / filar retry; não emitir às cegas
+    throw $e;
+}
 
 if (! $status->isOperational()) {
-    // Não emita — consulte failure() / aguarde
+    $failure = $status->failure();
+    // Host: aguardar ou filar conforme retryPolicy(); não emitir
 }
 ```
 

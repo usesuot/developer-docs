@@ -8,55 +8,76 @@ description: "Sincronize documentos com $cte->distributeDfe(): fromUltNsu para s
 
 Sincronize DF-e (procCTe e eventos) a partir do autorizador. Persista `ultNSU` / `maxNSU` no host.
 
-## Fluent — por NSU
+## Por NSU
 
 ```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
 use Suot\Fiscal\Core\ValueObject\Uf;
 
-$byNsu = $cte->distributeDfe()
-    ->forOperation('dist-nsu-1')
-    ->inHomologation()
-    ->authorizerUf(new Uf('RS'))
-    ->cnpj($cnpj)
-    ->fromUltNsu('0') // alias: ultNsu()
-    ->handle();
+try {
+    $byNsu = $cte->distributeDfe()
+        ->forOperation('dist-nsu-1')
+        ->inHomologation()
+        ->authorizerUf(new Uf('RS'))
+        ->cnpj($cnpj)
+        ->fromUltNsu('0') // alias: ultNsu()
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('distribute_dfe');
+    // Host: alertar; filar retry conforme $failure->retryPolicy; não avançar ultNSU às cegas
+    throw $e;
+}
 
-// $byNsu->ultNsu, maxNsu, procDocuments(), eventDocuments()
+$failure = $byNsu->failure();
+if ($failure === null) {
+    // Host: persistir ultNsu / maxNsu; processar procDocuments() e eventDocuments()
+} else {
+    $policy = $byNsu->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar nova sync */,
+        RetryMode::Never, null => /* alertar; não corromper cursor NSU */,
+        default => /* seguir recoveryGuide */,
+    };
+}
 ```
 
-## Fluent — por chave
+## Por chave
 
 ```php
-$byKey = $cte->distributeDfe()
-    ->forOperation('dist-key-1')
-    ->inHomologation()
-    ->authorizerUf(new Uf('RS'))
-    ->cnpj($cnpj)
-    ->forAccessKey($chave44)
-    ->handle();
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+use Suot\Fiscal\Core\ValueObject\Uf;
+
+try {
+    $byKey = $cte->distributeDfe()
+        ->forOperation('dist-key-1')
+        ->inHomologation()
+        ->authorizerUf(new Uf('RS'))
+        ->cnpj($cnpj)
+        ->forAccessKey($chave44)
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('distribute_dfe');
+    // Host: alertar; filar retry conforme $failure->retryPolicy
+    throw $e;
+}
+
+$failure = $byKey->failure();
+if ($failure === null) {
+    // Host: persistir documentos encontrados; atualizar cursor NSU se aplicável
+} else {
+    $policy = $byKey->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar nova busca */,
+        RetryMode::Never, null => /* não inventar documento; alertar */,
+        default => /* seguir recoveryGuide */,
+    };
+}
 ```
 
 <Note>
 O schema de CT-e não expõe `consChCTe` separado: `forAccessKey` faz varredura por NSU no pipeline interno.
 </Note>
 
-## Query equivalente
-
-```php
-use Suot\Fiscal\Cte\Application\Query\Distribution\DistributeCteDfeQuery;
-
-$query = DistributeCteDfeQuery::create()
-    ->forOperation('dist-nsu-1')
-    ->inHomologation()
-    ->authorizerUf(new Uf('RS'))
-    ->cnpj($cnpj)
-    ->fromUltNsu('0')
-    ->build();
-
-$result = $cte->handle($query);
-```
-
-## Exemplos
-
-- `examples/cte/distribute-dfe.php`
-- `bin/dx/07-distribute-dfe.php`
+Ver [Download proc](/fiscal/cte/consultas/download-proc).

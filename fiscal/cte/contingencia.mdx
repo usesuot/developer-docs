@@ -1,7 +1,7 @@
 ---
 title: "Contingência EPEC + SVC"
 sidebarTitle: "Contingência"
-description: "Registre EPEC com $cte->registerEpec() e emita em contingência com issueInContingency()->withEpec()->viaSvc()."
+description: "Registre EPEC com $cte->registerEpec() e emita em contingência com issueInContingency()->issue($command)->withEpec()->viaSvc()."
 ---
 
 ## O quê / quando
@@ -11,6 +11,8 @@ Autorizador indisponível: registre o Evento Prévio de Emissão em Contingênci
 ## Registrar EPEC isolado
 
 ```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
 use Suot\Fiscal\Core\ValueObject\Uf;
 use Suot\Fiscal\Cte\ValueObject\CteEpecPayload;
 use Suot\Fiscal\Cte\ValueObject\CteEpecTaker;
@@ -30,42 +32,80 @@ $payload = new CteEpecPayload(
     destinationUf: 'SP',
 );
 
-$epecResult = $cte->registerEpec()
-    ->forOperation('epec-1')
-    ->inHomologation()
-    ->issuerUf(new Uf('RS'))
-    ->accessKey($chave44)
-    ->emitterCnpj($cnpj)
-    ->epec($payload)
-    ->handle();
+try {
+    $epecResult = $cte->registerEpec()
+        ->forOperation('epec-1')
+        ->inHomologation()
+        ->issuerUf(new Uf('RS'))
+        ->accessKey($chave44)
+        ->emitterCnpj($cnpj)
+        ->epec($payload)
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('register_epec');
+    // Host: alertar; filar retry conforme $failure->retryPolicy
+    throw $e;
+}
+
+if (! $epecResult->isRejected()) {
+    // Host: persistir protocolo do EPEC, responseXml, accessKey, operationId
+}
+
+if ($epecResult->isRejected()) {
+    $failure = $epecResult->failure();
+    $policy = $epecResult->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterCorrection => /* corrigir payload/chave e registrar de novo */,
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar conforme política */,
+        RetryMode::QueryBeforeRetry => /* reconciliar antes de reenviar */,
+        RetryMode::Never, null => /* definitivo; não reenviar */,
+    };
+}
 ```
 
 ## Emissão em contingência (EPEC + SVC)
 
-Monte um `IssueCteCommand` normal e orquestre:
+`issueInContingency()->issue($command)` exige um `IssueCteCommand`. Materialize com `$cte->issue()…->build()` e orquestre:
 
 ```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
 use Suot\Fiscal\Cte\ValueObject\CteEmissionType;
 
-$issueCommand = /* IssueCteCommand::create()…->build() */;
+$issueCommand = $cte->issue()
+    ->forOperation('ot-123-contingency')
+    ->inHomologation()
+    // … mesma cadeia tipada da emissão normal …
+    ->build();
 
-$result = $cte->issueInContingency()
-    ->issue($issueCommand)
-    ->withEpec($payload)
-    ->viaSvc(CteEmissionType::SvcRs) // ou SvcSp
-    ->handle();
+try {
+    $result = $cte->issueInContingency()
+        ->issue($issueCommand)
+        ->withEpec($payload)
+        ->viaSvc(CteEmissionType::SvcRs) // ou SvcSp
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('issue_in_contingency');
+    // Host: alertar; timeout ambíguo → QueryBeforeRetry antes de reemitir
+    throw $e;
+}
 
-// $result->isAuthorized(), epecResult, issueResult
+if ($result->isAuthorized()) {
+    // Host: persistir artefatos de $result->issueResult e $result->epecResult
+}
+
+if ($result->isRejected()) {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterCorrection => /* corrigir dados; novo forOperation + build() + contingency */,
+        RetryMode::QueryBeforeRetry => /* byAccessKey() antes de reemitir */,
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar conforme política */,
+        RetryMode::Never, null => /* definitivo; não reenviar */,
+    };
+}
 ```
 
-Também é válido `$cte->issueInContingency()->issue($cmd)->viaSvc(CteEmissionType::SvcSp)->handle()` quando o fluxo de SVC não embute o EPEC no mesmo Command (conforme seu caso).
+Também é válido `$cte->issueInContingency()->issue($cmd)->viaSvc(CteEmissionType::SvcSp)->handle()` quando o fluxo de SVC não embute o EPEC no mesmo comando (conforme seu caso).
 
-## Command equivalente
-
-`RegisterEpecCteCommand::create()…->build()` e `IssueCteInContingencyCommand` via drafts/`$cte->handle()`.
-
-## Exemplos
-
-- `examples/cte/register-epec.php`
-- `examples/cte/issue-in-contingency.php`
-- `examples/cte/issue-in-contingency-svc.php`
+Ver [Emissão](/fiscal/cte/emissao) e [Resultados](/fiscal/cte/resultados).

@@ -8,9 +8,11 @@ description: "Registre o evento 110180 com $cte->proofOfDelivery() e CteProofOfD
 
 CT-e autorizado com entrega concluída. Datas no fuso `America/Sao_Paulo` — `dhEntrega` futura ou em UTC costuma gerar rejeição (ex.: cStat 872).
 
-## Fluent
+## Exemplo
 
 ```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
 use Suot\Fiscal\Cte\ValueObject\CteProofOfDeliveryPayload;
 
 $now = (new DateTimeImmutable('now', new DateTimeZone('America/Sao_Paulo')))
@@ -26,35 +28,34 @@ $payload = new CteProofOfDeliveryPayload(
     deliveredNfeKeys: [], // chaves NF-e entregues, se houver
 );
 
-$result = $cte->proofOfDelivery()
-    ->forOperation('pod-1')
-    ->inHomologation()
-    ->accessKey($chave44)
-    ->emitterCnpj($cnpj)
-    ->proofOfDelivery($payload)
-    ->handle();
+try {
+    $result = $cte->proofOfDelivery()
+        ->forOperation('pod-1')
+        ->inHomologation()
+        ->accessKey($chave44)
+        ->emitterCnpj($cnpj)
+        ->proofOfDelivery($payload)
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('proof_of_delivery');
+    // Host: alertar; QueryBeforeRetry se timeout após envio
+    throw $e;
+}
+
+if (! $result->isRejected()) {
+    // Host: persistir protocolNumber do evento, responseXml, accessKey, operationId
+}
+
+if ($result->isRejected()) {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterCorrection => /* corrigir payload (datas America/Sao_Paulo) e tentar de novo */,
+        RetryMode::QueryBeforeRetry => /* reconciliar eventos antes de reenviar */,
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar conforme política */,
+        RetryMode::Never, null => /* definitivo; não reenviar */,
+    };
+}
 ```
 
-## Command equivalente
-
-```php
-use Suot\Fiscal\Cte\Application\Command\ProofOfDelivery\RegisterCteProofOfDeliveryCommand;
-
-$command = RegisterCteProofOfDeliveryCommand::create()
-    ->forOperation('pod-1')
-    ->inHomologation()
-    ->accessKey($chave44)
-    ->emitterCnpj($cnpj)
-    ->proofOfDelivery($payload)
-    ->build();
-
-$result = $cte->handle($command);
-```
-
-## Result
-
-`ProofOfDeliveryCteResult` — `isRejected()`, `failure()`, `protocolNumber` do evento.
-
-## Exemplos
-
-- `bin/dx/04-proof-of-delivery.php`
+Resultado: `ProofOfDeliveryCteResult` — `isRejected()`, `failure()`, `protocolNumber` do evento.

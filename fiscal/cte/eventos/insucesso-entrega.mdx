@@ -8,9 +8,11 @@ description: "Registre o evento 110190 com $cte->deliveryFailure() e CteDelivery
 
 Tentativa de entrega sem sucesso. Motivo tipado em `CteDeliveryFailureReason`. Se `Other`, informe `reasonJustification` (≥ 15 caracteres).
 
-## Fluent
+## Exemplo
 
 ```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
 use Suot\Fiscal\Cte\ValueObject\CteDeliveryFailurePayload;
 use Suot\Fiscal\Cte\ValueObject\CteDeliveryFailureReason;
 
@@ -26,39 +28,40 @@ $payload = new CteDeliveryFailurePayload(
     failedNfeKeys: [],
 );
 
-$result = $cte->deliveryFailure()
-    ->forOperation('ie-1')
-    ->inHomologation()
-    ->accessKey($chave44)
-    ->emitterCnpj($cnpj)
-    ->deliveryFailure($payload)
-    ->handle();
+try {
+    $result = $cte->deliveryFailure()
+        ->forOperation('ie-1')
+        ->inHomologation()
+        ->accessKey($chave44)
+        ->emitterCnpj($cnpj)
+        ->deliveryFailure($payload)
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('delivery_failure');
+    // Host: alertar; QueryBeforeRetry se timeout após envio
+    throw $e;
+}
+
+if (! $result->isRejected()) {
+    // Host: persistir protocolNumber do evento, responseXml, accessKey, operationId
+}
+
+if ($result->isRejected()) {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterCorrection => /* corrigir motivo/justificativa/datas e tentar de novo */,
+        RetryMode::QueryBeforeRetry => /* reconciliar eventos antes de reenviar */,
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar conforme política */,
+        RetryMode::Never, null => /* definitivo; não reenviar */,
+    };
+}
 ```
 
 Motivos: `ReceiverNotFound`, `ReceiverRefused`, `AddressNotFound`, `Other`.
 
-## Command equivalente
-
-```php
-use Suot\Fiscal\Cte\Application\Command\DeliveryFailure\RegisterCteDeliveryFailureCommand;
-
-$command = RegisterCteDeliveryFailureCommand::create()
-    ->forOperation('ie-1')
-    ->inHomologation()
-    ->accessKey($chave44)
-    ->emitterCnpj($cnpj)
-    ->deliveryFailure($payload)
-    ->build();
-
-$result = $cte->handle($command);
-```
-
-## Result
-
-`DeliveryFailureCteResult` — `isRejected()`, `failure()`, protocolo do evento.
-
-Exemplo executável (stub): `examples/cte/delivery-failure.php` no repositório do SDK.
+Resultado: `DeliveryFailureCteResult` — `isRejected()`, `failure()`, protocolo do evento.
 
 <Tip>
-Há também `$cte->cancelDeliveryFailure()` / `CancelCteDeliveryFailureCommand` para cancelar o evento de insucesso quando aplicável.
+Há também `$cte->cancelDeliveryFailure()` para cancelar o evento de insucesso quando aplicável — use o mesmo envelope de exception + Result.
 </Tip>

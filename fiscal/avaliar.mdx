@@ -1,48 +1,58 @@
 ---
 title: "Avaliar o SDK sem conta"
 sidebarTitle: "Avaliar"
-description: "Leia a documentação e rode a trilha bin/dx 01–10 sem licença. Conta e token entram só na instalação via Composer."
+description: "Trilha de aprendizado da API pública de CT-e: Result, validação, emissão, consultas, eventos e contingência — sem licença. Conta e token entram só na instalação via Composer."
 ---
 
 Ler esta documentação **não exige licença**. Conta, assinatura e token Composer entram quando você for **instalar** pacotes a partir de `packages.suot.dev`.
-
-<Note>
-Os scripts `bin/dx` no repositório do SDK usam stubs (sem SEFAZ). O código que você escreve é o mesmo do dia a dia — só a infraestrutura muda.
-</Note>
 
 ## Modelo mental
 
 ```text
 Montar intenção  →  handle()  →  Result
-($cte->… ou *Command/*Query)     isAuthorized / isRejected / failure / retryPolicy
+($cte->…)              isAuthorized / isRejected / failure / retryPolicy
 ```
 
 O **host** persiste, enfileira, faz retry e decide idempotência. O SDK devolve artefatos e orientação — não grava banco, não agenda fila, não reenvia sozinho.
 
-## Trilha `bin/dx` (01–10)
+## Trilha de aprendizado
 
-| Script | O que treina |
-|---|---|
-| `01-service-status.php` | `$cte->serviceStatus()` — pré-voo do autorizador |
-| `02-issue.php` | `$cte->issue()` / `IssueCteCommand` — emissão (stub rejeita de propósito) |
-| `03-download-proc.php` | `$cte->downloadProc()` — XML protocolado (`procCTe`) |
-| `04-proof-of-delivery.php` | `$cte->proofOfDelivery()` — evento 110180 |
-| `05-cancel.php` | `$cte->cancel()` — evento 110111 |
-| `06-rejection-and-revise.php` | `failure()`, `retryPolicy()`, `revise()` |
-| `07-distribute-dfe.php` | `$cte->distributeDfe()` — NSU e chave |
-| `08-command-query-equivalent.php` | Paridade client ≡ Query + Handler |
-| `09-validate-issuer-setup.php` | `$cte->validate()` — pré-persistência sem SEFAZ |
-| `10-persist-what-matters.php` | Campos do Result que o host deve gravar |
+Siga as páginas na ordem. Cada uma traz snippets inline com `$cte->…->handle()`, envelope de exception + Result e ações do host.
 
-Caminho no monorepo: `fiscal-sdk-php/bin/dx/`.
+<CardGroup cols={2}>
+  <Card title="1. API pública" icon="book-open" href="/fiscal/api-publica">
+    Client `$cte` e o que é `@internal`.
+  </Card>
+  <Card title="2. Validação" icon="shield-check" href="/fiscal/cte/validacao">
+    `$cte->validate()` — setup do emitente sem SEFAZ.
+  </Card>
+  <Card title="3. Emissão" icon="file-plus" href="/fiscal/cte/emissao">
+    `$cte->issue()…->handle()`.
+  </Card>
+  <Card title="4. Resultados" icon="circle-check" href="/fiscal/cte/resultados">
+    `isAuthorized`, `failure()`, `retryPolicy()` e o que persistir.
+  </Card>
+  <Card title="5. Consultas" icon="magnifying-glass" href="/fiscal/cte/consultas/status-servico">
+    Status, chave, protocolo, `procCTe` e DF-e.
+  </Card>
+  <Card title="6. Eventos" icon="bell" href="/fiscal/cte/eventos/cancelamento">
+    Cancelamento, CC-e, comprovante e insucesso.
+  </Card>
+  <Card title="7. Contingência" icon="triangle-alert" href="/fiscal/cte/contingencia">
+    EPEC + emissão via SVC.
+  </Card>
+  <Card title="8. Instalação" icon="download" href="/fiscal/instalacao">
+    Registry, token e `composer require` (aí sim precisa de licença).
+  </Card>
+</CardGroup>
 
 ## Depois de avaliar
 
 <CardGroup cols={2}>
-  <Card title="API pública" icon="book-open" href="/fiscal/api-publica">
-    Dois entry points e o que é @internal.
+  <Card title="Jornada CT-e" icon="map" href="/fiscal/cte">
+    Mapa completo de validação, emissão, consultas e eventos.
   </Card>
-  <Card title="Instalar" icon="download" href="/fiscal/instalacao">
-    Registry, token e `composer require` (aí sim precisa de licença).
+  <Card title="Resultados (transversal)" icon="shield-check" href="/fiscal/resultados">
+    Actionable Result em todas as operações.
   </Card>
 </CardGroup>

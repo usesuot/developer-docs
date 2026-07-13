@@ -8,21 +8,39 @@ description: "Use $cte->validate() para CNPJ, UF, IE, RNTRC, certificado, chave,
 
 Valide dados **antes** de gravar no host ou emitir. Não há rede SEFAZ: o retorno é `ValidationResult` (`isValid()`, `failure()` quando inválido).
 
-## Fluent
+## Exemplo
 
 ```php
-$result = $cte->validate()->issuerSetup()
-    ->withCnpj('04.252.011/0001-10')
-    ->withStateRegistration('0961234567')
-    ->inUf('RS')
-    ->underRntrc('12345678')
-    ->withPkcs12('/caminho/certificado.pfx')
-    ->protectedBy('senha')
-    ->handle();
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+
+try {
+    $result = $cte->validate()->issuerSetup()
+        ->withCnpj('04.252.011/0001-10')
+        ->withStateRegistration('0961234567')
+        ->inUf('RS')
+        ->underRntrc('12345678')
+        ->withPkcs12('/caminho/certificado.pfx')
+        ->protectedBy('senha')
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('validate');
+    // Host: alertar (certificado/arquivo local); não persistir setup inválido
+    throw $e;
+}
+
+if ($result->isValid()) {
+    // Host: pode persistir setup / seguir para pré-voo SEFAZ
+}
 
 if (! $result->isValid()) {
     $failure = $result->failure();
-    // code, recoveryGuide, relatedField nos steps
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterCorrection => /* corrigir CNPJ/IE/RNTRC/cert e validar de novo */,
+        RetryMode::Never, null => /* não emitir com dados inválidos */,
+        default => /* seguir recoveryGuide */,
+    };
 }
 ```
 
@@ -38,24 +56,10 @@ Outras portas no mesmo `validate()`:
 | `accessKey()` | Chave de acesso CT-e |
 | `nsu()` | NSU de distribuição |
 
-## Command/Query equivalente
-
-```php
-$query = \Suot\Fiscal\Cte\Application\Validate\Cnpj\ValidateCnpjQuery::create()
-    ->withCnpj('04.252.011/0001-10')
-    ->build();
-
-$result = $cte->validate()->handle($query);
-// ou ValidateCnpjHandler::handle($query)
-```
-
 ## Result
 
 - `isValid()` — dado aceito para persistência local
 - `normalizedValue` — quando aplicável (ex.: CNPJ só dígitos)
 - `failure()` — orientação acionável (`AfterCorrection` típico)
 
-## Exemplos
-
-- `examples/cte/validate-issuer-setup.php`
-- `bin/dx/09-validate-issuer-setup.php`
+Trilha: [Avaliar](/fiscal/avaliar) · [Emissão](/fiscal/cte/emissao).

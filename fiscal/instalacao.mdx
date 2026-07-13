@@ -10,7 +10,7 @@ description: "Requisitos, registry packages.suot.dev, token Composer e require d
 2. Extensões: `openssl`, `soap`, `curl`, `mbstring`, `dom`
 3. **Só na hora de baixar pacotes:** organização + licença + [token Composer](/platform/tokens-composer)
 
-Ler docs e estudar exemplos **não** exige conta. O registry privado exige autenticação.
+Ler a documentação **não** exige conta. O registry privado exige autenticação.
 
 <CardGroup cols={2}>
   <Card title="Contratar" icon="credit-card" href="https://developers.suot.dev">
@@ -74,8 +74,8 @@ Injete `COMPOSER_AUTH` como secret. Token dedicado de CI — não compartilhe to
 
 | Avaliação | Produção |
 |---|---|
-| Docs + `bin/dx` / `examples/cte` com stubs | Pacotes versionados + certificado + autorizador real |
-| Sem SEFAZ | Homologação SEFAZ antes de `inProduction()` |
+| Docs públicas + snippets inline (sem SEFAZ) | Pacotes versionados + certificado + autorizador real |
+| Estudo da API sem instalar | Homologação SEFAZ antes de `inProduction()` |
 
 <Note>
 Vencimento de atualização **não** é kill switch no runtime já instalado. Sem renovação você deixa de receber updates e suporte — o software instalado continua.

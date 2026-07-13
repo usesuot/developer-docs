@@ -1,7 +1,7 @@
 ---
 title: "Rejeições de CT-e"
 sidebarTitle: "Rejeições"
-description: "Trate cStat e falhas fiscais via failure() e revise() no IssueCteCommand — sem misturar com exception de infraestrutura."
+description: "Trate cStat e falhas fiscais via failure() e retryPolicy(). Corrija remontando issue() — sem misturar com exception de infraestrutura."
 ---
 
 ## O quê / quando
@@ -11,39 +11,83 @@ A SEFAZ (ou validação fiscal) recusou a operação. O Handler devolve Result r
 ## Ler a rejeição
 
 ```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+
+try {
+    $result = $cte->issue()
+        ->forOperation('ot-123')
+        ->inHomologation()
+        // … cadeia …
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('issue');
+    // Host: alertar; não tratar como rejeição fiscal
+    throw $e;
+}
+
 if ($result->isRejected()) {
     $failure = $result->failure();
     // $failure->code, $failure->message
     // $failure->recoveryGuide->summary
     // steps com relatedField (caminho público, ex.: shipper.stateRegistration)
 
-    $mode = $result->retryPolicy()?->mode;
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterCorrection => /* corrigir e remontar emissão */,
+        RetryMode::QueryBeforeRetry => /* byAccessKey() antes de reemitir */,
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar conforme política */,
+        RetryMode::Never, null => /* definitivo; não reenviar */,
+    };
 }
 ```
 
 ## Corrigir e reemitir
 
+Com `AfterCorrection`, remonte a cadeia com dados corrigidos e **novo** `forOperation`:
+
 ```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
 use Suot\Fiscal\Cte\Data\CteParty;
 
-$retryCommand = $command
-    ->revise()
-    ->withOperationId($novoOperationId)
-    ->forShipper($shipperCorrigido)
-    ->build();
+try {
+    $result = $cte->issue()
+        ->forOperation('ot-123-retry') // novo operationId
+        ->inHomologation()
+        // … mesma cadeia, com forShipper($shipperCorrigido) …
+        ->forShipper($shipperCorrigido)
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('issue');
+    // Host: alertar; filar conforme $failure->retryPolicy
+    throw $e;
+}
 
-$result = $cte->handle($retryCommand);
+if ($result->isAuthorized()) {
+    // Host: persistir artefatos da nova autorização
+}
+
+if ($result->isRejected()) {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    // Host: repetir o match de RetryMode; Never → não reenviar
+}
 ```
 
 <Warning>
 Não reutilize o XML assinado anterior após alterar dados fiscais. Gere novo documento com novo `operationId`.
 </Warning>
 
+<Tip>
+Se você já materializou um `IssueCteCommand` (por exemplo via Handlers no [Laravel Bridge](/fiscal/laravel-bridge)), `revise()` reconstrói a intenção sem mutar o command original — útil com `withOperationId()` e campos corrigidos. Na API padrão, prefira remontar `$cte->issue()…`.
+</Tip>
+
 ## Não confundir
 
 | Rejeição fiscal | Infraestrutura |
 |---|---|
-| Result + `failure()` | Exception |
+| Result + `failure()` | `InfrastructureException` |
 | Corrigir / consultar / aguardar | Retry de rede, cert, timeout com política do host |
 
-Detalhes de modos: [Retry](/fiscal/retry). Exemplo: `bin/dx/06-rejection-and-revise.php`.
+Detalhes de modos: [Retry](/fiscal/retry).

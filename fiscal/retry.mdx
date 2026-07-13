@@ -25,26 +25,46 @@ $mode = $result->retryPolicy()?->mode;
 | `Never` | Não reenviar; tratar como definitivo |
 | `Immediate` | Reenviar com cuidado (mesmo intent, novo operationId se necessário) |
 | `AfterDelay` | Esperar e tentar de novo |
-| `AfterCorrection` | Corrigir dados (`revise()`) e reenviar |
+| `AfterCorrection` | Corrigir dados e remontar `$cte->issue()…` com novo `forOperation` |
 | `QueryBeforeRetry` | Consultar por chave/protocolo **antes** de emitir de novo |
 
 ## O host executa
 
 ```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+
 $policy = $result->retryPolicy();
 
 if ($policy === null || ! $policy->isAllowed()) {
+    // Host: definitivo — não reenviar
     return;
 }
 
 match ($policy->mode) {
-    RetryMode::QueryBeforeRetry => $cte->byAccessKey()
-        ->forOperation('reconcile-1')
-        ->inHomologation()
-        ->accessKey($chaveSuspeita)
-        ->handle(),
-    RetryMode::AfterCorrection => /* revise() + handle */,
-    default => /* fila / delay / never */,
+    RetryMode::QueryBeforeRetry => (function () use ($cte, $chaveSuspeita): void {
+        try {
+            $query = $cte->byAccessKey()
+                ->forOperation('reconcile-1')
+                ->inHomologation()
+                ->accessKey($chaveSuspeita)
+                ->handle();
+        } catch (InfrastructureException $e) {
+            $failure = $e->toFailure('query');
+            // Host: alertar; filar consulta conforme $failure->retryPolicy
+            throw $e;
+        }
+
+        if ($query->isFound()) {
+            // Host: reconciliar estado; não reemitir
+            return;
+        }
+
+        // Host: só então decidir reemissão com novo forOperation
+    })(),
+    RetryMode::AfterCorrection => /* remontar issue() com dados corrigidos + novo forOperation */,
+    RetryMode::AfterDelay, RetryMode::Immediate => /* filar com delay / imediato */,
+    RetryMode::Never => /* não fazer nada */,
 };
 ```
 

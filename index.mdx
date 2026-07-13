@@ -1,7 +1,7 @@
 ---
 title: "SUOT — SDKs PHP para software de transporte no Brasil"
 sidebarTitle: "Início"
-description: "Documentação pública do Fiscal SDK e ANTT SDK. Avalie a API tipada antes de contratar. Da ordem ao resultado."
+description: "Documentação pública do Fiscal SDK. Avalie a API tipada antes de contratar. Da ordem ao resultado."
 ---
 
 SUOT para Desenvolvedores — infraestrutura para quem constrói software de transporte no Brasil.
@@ -10,22 +10,19 @@ SDKs tipados para documentos fiscais e obrigações regulatórias, com DX pensad
 
 <CardGroup cols={2}>
   <Card title="Avaliar o Fiscal SDK" icon="book-open" href="/fiscal/avaliar">
-    Leia a API pública, veja exemplos fluent de CT-e e entenda Result e rejeição — sem criar conta.
+    Leia a API pública, veja exemplos de CT-e com `$cte->…->handle()` e entenda Result e rejeição — sem criar conta.
   </Card>
   <Card title="Contratar / Developer Portal" icon="building-columns" href="https://developers.suot.dev">
     Crie a organização, ative a licença e gere tokens Composer para instalar via packages.suot.dev.
   </Card>
 </CardGroup>
 
-<CardGroup cols={3}>
-  <Card title="CT-e fluent" icon="file-invoice" href="/fiscal/cte">
+<CardGroup cols={2}>
+  <Card title="CT-e" icon="file-invoice" href="/fiscal/cte">
     Emitir, consultar, eventos, contingência e DF-e com `$cte->…->handle()`.
   </Card>
   <Card title="Instalar com Composer" icon="download" href="/fiscal/instalacao">
     Registry privado, autenticação e `composer require` quando for integrar de verdade.
-  </Card>
-  <Card title="ANTT SDK" icon="truck" href="/antt/visao-geral">
-    CIOT, RNTRC e obrigações regulatórias por API PHP tipada.
   </Card>
 </CardGroup>
 
@@ -43,23 +40,38 @@ Sua aplicação → [Laravel Bridge opcional] → Fiscal SDK → SEFAZ / serviç
 
 ## Mental model (CT-e)
 
-Dois entry points equivalentes — escolha um e mantenha:
+Monte a intenção no client e encerre em `handle()`:
 
 ```php
-// A — Client fluent
-$result = $cte->issue()
-    ->forOperation('ot-000123')
-    ->inHomologation()
-    // … issuedBy, from, to, carrying, …
-    ->handle();
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
 
-// B — Command + Handler
-$command = IssueCteCommand::create()
-    ->forOperation('ot-000123')
-    ->inHomologation()
-    // … mesma cadeia …
-    ->build();
-$result = $handler->handle($command);
+try {
+    $result = $cte->issue()
+        ->forOperation('ot-000123')
+        ->inHomologation()
+        // … issuedBy, from, to, carrying, …
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('issue');
+    // Host: alertar; filar retry conforme $failure->retryPolicy (timeout ambíguo → QueryBeforeRetry)
+    throw $e;
+}
+
+if ($result->isAuthorized()) {
+    // Host: persistir accessKey, protocolNumber, submittedDocumentXml, responseXml, receivedAt, operationId
+}
+
+if ($result->isRejected()) {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterCorrection => /* remontar issue() com dados corrigidos + novo operationId */,
+        RetryMode::QueryBeforeRetry => /* byAccessKey() antes de reemitir */,
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar conforme política */,
+        RetryMode::Never, null => /* definitivo; não reenviar */,
+    };
+}
 ```
 
 Rejeição fiscal é `Result` (`isRejected()`, `failure()`), não exception. Falha de infraestrutura (rede, certificado) é exception. O **host** persiste XML/chave e executa retry — o SDK só orienta.
@@ -71,7 +83,7 @@ Rejeição fiscal é `Result` (`isRejected()`, `failure()`), não exception. Fal
     Leia [API pública](/fiscal/api-publica) e a jornada [CT-e](/fiscal/cte).
   </Step>
   <Step title="Siga a trilha Avaliar">
-    Veja [Avaliar o SDK](/fiscal/avaliar) — mapa da trilha `bin/dx` e o que cada fluxo ensina.
+    Veja [Avaliar o SDK](/fiscal/avaliar) — caminho de aprendizado da API pública, Result e fluxos de CT-e.
   </Step>
   <Step title="Instale quando for integrar">
     Com licença ativa, configure o registry e rode `composer require` — [Instalação](/fiscal/instalacao).

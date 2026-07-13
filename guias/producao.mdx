@@ -119,41 +119,50 @@ A SEFAZ e a ANTT retornam um código de status (`cStat`) e uma descrição (`xMo
 ### Padrão recomendado
 
 ```php
-use Suot\Fiscal\Cte\Application\Command\Issue\IssueCteCommand;
-use Suot\Fiscal\Cte\Application\Command\Issue\IssueCteHandler;
+use Suot\Fiscal\Cte\Application\Cte;
 use Suot\Fiscal\Cte\Operation\Issue\IssueCteResult;
 use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
 use Psr\Log\LoggerInterface;
 
 final class IssueCteService
 {
     public function __construct(
-        private readonly IssueCteHandler $handler,
+        private readonly Cte $cte,
         private readonly LoggerInterface $logger,
     ) {}
 
-    public function issue(IssueCteCommand $command): IssueCteResult
+    public function issue(string $operationId): IssueCteResult
     {
         try {
-            $result = $this->handler->handle($command);
-
-            if ($result->isRejected()) {
-                $failure = $result->failure();
-                $this->logger->warning('CT-e rejeitado', [
-                    'code'        => $failure?->code,
-                    'operationId' => $command->operationId,
-                ]);
-            }
-
-            return $result;
+            $result = $this->cte->issue()
+                ->forOperation($operationId)
+                ->inProduction()
+                // … cadeia tipada …
+                ->handle();
         } catch (InfrastructureException $e) {
             $this->logger->critical('Falha de infraestrutura SEFAZ', [
                 'message'     => $e->getMessage(),
-                'operationId' => $command->operationId,
+                'operationId' => $operationId,
             ]);
-
             throw $e;
         }
+
+        if ($result->isAuthorized()) {
+            // Host: persistir accessKey, protocolNumber, submittedDocumentXml, responseXml
+        }
+
+        if ($result->isRejected()) {
+            $failure = $result->failure();
+            $this->logger->warning('CT-e rejeitado', [
+                'code'        => $failure?->code,
+                'operationId' => $operationId,
+                'retryMode'   => $result->retryPolicy()?->mode->value,
+            ]);
+            // Host: AfterCorrection / QueryBeforeRetry / Never conforme RetryMode
+        }
+
+        return $result;
     }
 }
 ```

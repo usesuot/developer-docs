@@ -100,20 +100,20 @@ O Copilot funciona diretamente com PHP tipado sem configuração adicional. Com 
 
 ### Claude Code / Cursor
 
-Beneficiam-se especialmente da arquitetura CQRS do SDK. Quando o agente tem acesso ao código do projeto:
+Beneficiam-se especialmente da tipagem do SDK. Quando o agente tem acesso ao código do projeto:
 
-- Identifica qual `Command` usar para cada operação (ex.: `IssueCteCommand`, `RegistrarCiotCommand`).
-- Infere quais etapas são obrigatórias pela cadeia `IssueCteCommand::create()…->build()`.
-- Gera o handler correto com base nos tipos de `Result` esperados (`IssueCteResult`).
+- Usa o client `Cte` (`$cte->issue()`, `$cte->cancel()`, …) e encerra em `handle()`.
+- Infere etapas obrigatórias pela cadeia tipada até `handle()`.
+- Trata `IssueCteResult` com `isAuthorized()` / `isRejected()` / `failure()` / `retryPolicy()`.
 
 ### Windsurf / Outros agentes LSP-aware
 
 Qualquer agente que consuma o Language Server Protocol (LSP) se beneficia automaticamente dos tipos explícitos. Nenhuma configuração adicional é necessária além de ter o SDK instalado via Composer e o PHP LSP ativo.
 
 <Tip>
-  Ao pedir a um agente de IA que gere código usando os SDKs SUOT, mencione explicitamente o padrão arquitetural para obter resultados mais precisos:
+  Ao pedir a um agente de IA que gere código usando os SDKs SUOT, mencione explicitamente o padrão:
 
-  > "Estou usando o SUOT SDK com o padrão CQRS (Command / Handler / Result), Value Objects com named arguments e enums tipados. Gere o código seguindo esse padrão."
+  > "Estou usando o SUOT Fiscal SDK com `$cte->…->handle()`, Value Objects com named arguments, enums tipados, `InfrastructureException` para infra e `Result`/`retryPolicy()` para rejeição fiscal. Gere o código seguindo esse padrão."
 
   Isso ajuda o modelo a escolher a estrutura correta mesmo sem ter indexado toda a documentação do SDK.
 </Tip>
@@ -125,46 +125,53 @@ Qualquer agente que consuma o Language Server Protocol (LSP) se beneficia automa
 Veja como um ciclo típico de desenvolvimento assistido por IA funciona com o SUOT SDK:
 
 <Steps>
-  <Step title="Peça ao agente o Command">
+  <Step title="Peça ao agente a emissão">
     Solicite ao seu assistente de IA:
 
-    > "Crie um `IssueCteCommand` com `IssueCteCommand::create()…->build()` para um CT-e rodoviário em homologação."
+    > "Emita um CT-e rodoviário em homologação com `$cte->issue()…->handle()`, incluindo try/catch de InfrastructureException e tratamento de Result."
 
     Como a cadeia tipada e o PHPDoc em pt-BR guiam cada etapa, a IA gera um scaffold correto sem inventar classes antigas (`EmitirCTe*`, `CTeBuilder`).
 
     ```php
-    // Gerado pelo agente — API pública na primeira tentativa
-    use Suot\Fiscal\Cte\Application\Command\Issue\IssueCteCommand;
+    use Suot\Fiscal\Core\Exception\InfrastructureException;
+    use Suot\Fiscal\Core\Result\RetryMode;
     use Suot\Fiscal\Core\ValueObject\Uf;
 
-    $command = IssueCteCommand::create()
-        ->forOperation('ot-000123')
-        ->inHomologation()
-        ->numbered(series: '1', number: '12345')
-        ->issuedIn(new Uf('RS'))
-        ->withOperation(cfop: '5353', nature: 'PRESTACAO DE SERVICO DE TRANSPORTE')
-        // … issuedBy / from / to / forShipper / deliverTo / carrying / charging …
-        ->build();
+    try {
+        $result = $cte->issue()
+            ->forOperation('ot-000123')
+            ->inHomologation()
+            ->numbered(series: '1', number: '12345')
+            ->issuedIn(new Uf('RS'))
+            ->withOperation(cfop: '5353', nature: 'PRESTACAO DE SERVICO DE TRANSPORTE')
+            // … issuedBy / from / to / forShipper / deliverTo / carrying / charging …
+            ->handle();
+    } catch (InfrastructureException $e) {
+        $failure = $e->toFailure('issue');
+        // Host: alertar; filar conforme $failure->retryPolicy
+        throw $e;
+    }
     ```
   </Step>
-  <Step title="Execute o Handler">
-    Peça ao agente para completar o fluxo com o handler:
+  <Step title="Trate o Result">
+    Peça ao agente para completar a tratativa:
 
-    > "Agora injete o `IssueCteHandler` e trate o `IssueCteResult` com `isAuthorized()` / `isRejected()` / `failure()`."
+    > "Trate `IssueCteResult` com `isAuthorized()`, `isRejected()`, `failure()` e `retryPolicy()`."
 
     ```php
-    use Suot\Fiscal\Cte\Application\Command\Issue\IssueCteHandler;
-
-    /** @var IssueCteHandler $handler */
-    $result = $handler->handle($command);
-
     if ($result->isAuthorized()) {
-        // host: persistir accessKey, protocolNumber, submittedDocumentXml
+        // Host: persistir accessKey, protocolNumber, submittedDocumentXml
     }
 
     if ($result->isRejected()) {
         $failure = $result->failure();
-        // orientar correção / retry com failure() e retryPolicy()
+        $policy = $result->retryPolicy();
+        match ($policy?->mode) {
+            RetryMode::AfterCorrection => /* remontar issue() com dados corrigidos */,
+            RetryMode::QueryBeforeRetry => /* byAccessKey() antes de reemitir */,
+            RetryMode::Never, null => /* definitivo; não reenviar */,
+            default => /* filar conforme política */,
+        };
     }
     ```
   </Step>
@@ -187,7 +194,7 @@ Se você utiliza agentes compatíveis com o **Model Context Protocol (MCP)**, po
 
 O [Mintlify MCP](https://mcp.mintlify.com) permite que agentes como Claude e Cursor consultem documentação Mintlify em tempo real via protocolo MCP. Configure o servidor MCP apontando para a documentação do SUOT para que seu agente:
 
-- Encontre o Command correto para cada operação sem sair da IDE.
+- Encontre o método correto em `$cte` para cada operação sem sair da IDE.
 - Consulte exemplos de código diretamente nos tooltips do agente.
 - Responda perguntas sobre enums, Value Objects e configuração com base na documentação oficial.
 

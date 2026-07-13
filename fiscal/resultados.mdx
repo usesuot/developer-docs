@@ -10,38 +10,59 @@ Toda operação pública de CT-e devolve um `*Result` tipado. Rejeição fiscal 
 
 | Situação | Como tratar |
 |---|---|
-| Autorizado / registrado | `isAuthorized()` (emissão) ou campos de sucesso do Result |
+| Autorizado / registrado | `isAuthorized()` (emissão) ou `!isRejected()` / `isFound()` / `isValid()` conforme o Result |
 | Rejeição SEFAZ / fiscal | `isRejected()` → `failure()` → `retryPolicy()` |
 | Processando / ambíguo | `isProcessing()` ou consultar (`QueryBeforeRetry`) |
-| Infra (timeout, rede, cert) | Exception — `try/catch` separado |
+| Infra (timeout, rede, cert) | `InfrastructureException` — `try/catch` + `toFailure()` |
 
 ## Exemplo (emissão)
 
 ```php
-$result = $cte->issue()/* … */->handle();
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+
+try {
+    $result = $cte->issue()
+        ->forOperation('ot-123')
+        ->inHomologation()
+        // … cadeia …
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('issue');
+    // Host: alertar; filar retry conforme $failure->retryPolicy (timeout ambíguo → QueryBeforeRetry)
+    throw $e;
+}
 
 if ($result->isAuthorized()) {
-    // accessKey, protocolNumber, submittedDocumentXml, responseXml
+    // Host: persistir accessKey, protocolNumber, submittedDocumentXml, responseXml, receivedAt, operationId
 }
 
 if ($result->isRejected()) {
     $failure = $result->failure();
-    $guide = $failure?->recoveryGuide;
     $policy = $result->retryPolicy();
-    // $policy->mode: never | immediate | after_delay | after_correction | query_before_retry
+    match ($policy?->mode) {
+        RetryMode::AfterCorrection => /* remontar issue() com dados corrigidos + novo forOperation */,
+        RetryMode::QueryBeforeRetry => /* byAccessKey() antes de reemitir */,
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar conforme política */,
+        RetryMode::Never, null => /* definitivo; não reenviar */,
+    };
+}
+
+if ($result->isProcessing()) {
+    // Host: consultar por chave/protocolo; não emitir de novo às cegas
 }
 ```
 
-O mesmo padrão (`failure()`, `retryPolicy()`, `canRetry()`) aparece em cancelamento, eventos, EPEC, contingência, consultas e `downloadProc`.
+O mesmo envelope (`try/catch`, `failure()`, `retryPolicy()`, ações do host) aparece em cancelamento, eventos, EPEC, contingência, consultas e `downloadProc`.
 
 ## O que o host faz
 
 - Persistir artefatos do Result ([CT-e → Resultados](/fiscal/cte/resultados))
 - Executar retry conforme [Retry](/fiscal/retry) — o SDK **não** reenvia sozinho
-- Corrigir dados com `IssueCteCommand::revise()` quando `AfterCorrection`
+- Corrigir dados remontando `$cte->issue()…` com novo `forOperation` quando `AfterCorrection`
 
-## Exemplos
+## Próximos passos
 
-- `examples/cte/actionable-result.php`
-- `bin/dx/06-rejection-and-revise.php`
-- `bin/dx/10-persist-what-matters.php`
+- [Resultados da emissão CT-e](/fiscal/cte/resultados) — campos a persistir
+- [Rejeições](/fiscal/rejeicoes) — `failure()` e correção
+- [Retry](/fiscal/retry) — modos de `retryPolicy()`

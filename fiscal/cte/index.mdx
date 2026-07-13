@@ -4,7 +4,7 @@ sidebarTitle: "Visão geral"
 description: "Mapa da API pública de CT-e: validação, emissão, resultados, consultas, eventos e contingência. Ainda não declarar production-ready sem schemas, fixtures e homologação."
 ---
 
-O CT-e (modelo 57) é o primeiro documento com API pública unificada no Fiscal SDK: client `Suot\Fiscal\Cte\Application\Cte` e Commands/Queries equivalentes.
+O CT-e (modelo 57) é o primeiro documento com API pública unificada no Fiscal SDK: client `Suot\Fiscal\Cte\Application\Cte` via `$cte->…->handle()`.
 
 <Warning>
 Capacidades fiscais só são production-ready após schemas importados, fixtures, ciclo de vida completo e evidência de homologação. Esta documentação descreve a API pública atual — não um selo de prontidão.
@@ -17,7 +17,7 @@ Capacidades fiscais só são production-ready após schemas importados, fixtures
     `$cte->validate()` — CNPJ, IE, RNTRC, certificado, setup do emitente (sem SEFAZ).
   </Card>
   <Card title="Emissão" icon="file-plus" href="/fiscal/cte/emissao">
-    `$cte->issue()…->handle()` e `IssueCteCommand::create()…->build()`.
+    `$cte->issue()…->handle()`.
   </Card>
   <Card title="Resultados" icon="circle-check" href="/fiscal/cte/resultados">
     `IssueCteResult`: autorizado, rejeitado, `failure()`, campos a persistir.
@@ -46,6 +46,6 @@ Capacidades fiscais só são production-ready após schemas importados, fixtures
   <Card title="Insucesso na entrega" href="/fiscal/cte/eventos/insucesso-entrega" />
 </CardGroup>
 
-## Exemplos no repositório
+## Próximos passos
 
-`examples/cte/` e `bin/dx/` — ver [Avaliar](/fiscal/avaliar).
+Trilha didática: [Avaliar o SDK](/fiscal/avaliar).

@@ -15,10 +15,35 @@ Instruções para agentes e autores que escrevem documentação neste repositór
 
 ### API pública (obrigatório)
 
-Documente **somente**:
+Documente como API padrão do consumidor:
 
 1. `$cte->…->handle()` — client `Suot\Fiscal\Cte\Application\Cte`
-2. `*Command::create()…->build()` / `*Query::create()…->build()` + `Handler::handle()` ou `$cte->handle($cmd)`
+
+Command/Query + Handler (`*Command::create()…->build()` / `*Query::create()…->build()` + `Handler::handle()`) só em:
+
+- [Laravel Bridge](/fiscal/laravel-bridge) (seção avançada de Handlers)
+- menções leves no glossário, se necessário
+
+Não rotule seções como "Fluent", "Command equivalente", "Query equivalente", "dois entry points" ou "Entry point A/B". **Nunca** use a palavra "fluent" em copy publicada.
+
+### Envelope obrigatório em todo snippet operacional
+
+Todo exemplo que chama SEFAZ / Handler deve incluir:
+
+1. `try/catch` de `Suot\Fiscal\Core\Exception\InfrastructureException` (com `toFailure()` quando útil)
+2. Branches do Result (`isAuthorized` / `isRejected` / `isProcessing` / `isOperational` / `isValid` / `isFound`, conforme o tipo)
+3. `failure()` e `retryPolicy()` / `RetryMode` quando a operação os expõe
+4. Comentários do que o **host** deve fazer (persistir, corrigir, consultar antes de retry, filar delay, alertar, não reemitir)
+
+### AfterCorrection na emissão
+
+Nas páginas de capacidade CT-e: remontar `$cte->issue()…` com dados corrigidos e novo `forOperation` — não documentar `Command::revise()` nessas páginas.
+
+Tip opcional sobre `revise()` apenas em `fiscal/rejeicoes.mdx` ou `fiscal/cte/resultados.mdx`, com link ao Laravel Bridge se precisar.
+
+### Contingência
+
+`issueInContingency()->issue($command)` exige `IssueCteCommand`. Mostre `$cte->issue()…->build()` e depois a cadeia de contingência, com envelope completo de Result.
 
 ### Nunca documentar como API do consumidor
 
@@ -46,15 +71,14 @@ Use `usesuot/fiscal-core`, `usesuot/fiscal-sefaz`, `usesuot/fiscal-cte`, `usesuo
 
 ### Página de capacidade (padrão)
 
-1. O quê / quando  
-2. Exemplo fluent  
-3. Equivalente Command/Query (breve)  
-4. Como ler o Result  
-5. Link para `examples/cte/…` ou `bin/dx/…`
+1. O quê / quando
+2. Exemplo `$cte->…->handle()` **inline no MDX** (com envelope completo)
+3. Como ler o Result / o que o host faz
+4. Link para outras páginas da docs (nunca para arquivos do repositório)
 
 ### Fonte de verdade do código
 
-Antes de inventar método ou parâmetro, leia o código em `../fiscal-sdk-php/packages/cte/src/Application/` e os exemplos em `examples/cte/` / `bin/dx/`.
+Autores **podem** ler `../fiscal-sdk-php` (código-fonte em `packages/`) para garantir precisão de API. **Nunca** cite `examples/`, `bin/`, `bin/dx/` ou caminhos de monorepo em páginas publicadas. Todo snippet de uso vive **inline no MDX** — o consumidor recebe só pacotes Composer (`usesuot/fiscal-*`).
 
 ## Estilo
 

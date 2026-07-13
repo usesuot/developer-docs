@@ -1,7 +1,7 @@
 ---
 title: "Laravel Bridge"
 sidebarTitle: "Laravel Bridge"
-description: "Injete Suot\Fiscal\Cte\Application\Cte ou IssueCteHandler no container Laravel via usesuot/fiscal-laravel."
+description: 'Injete Suot\Fiscal\Cte\Application\Cte no container Laravel via usesuot/fiscal-laravel. Handlers explícitos são avançados.'
 ---
 
 ## Instalação
@@ -13,10 +13,12 @@ php artisan vendor:publish --tag=fiscal-config
 
 Configure `FISCAL_ENVIRONMENT`, `FISCAL_CERT_PATH`, `FISCAL_CERT_PASSWORD`, `FISCAL_ISSUER_UF`. Produção exige `FISCAL_ALLOW_PRODUCTION=true`.
 
-## Injetar Cte
+## Injetar `Cte` (padrão)
 
 ```php
 use Suot\Fiscal\Cte\Application\Cte;
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
 
 final class EmitirCteAction
 {
@@ -26,21 +28,50 @@ final class EmitirCteAction
 
     public function __invoke(): void
     {
-        $result = $this->cte
-            ->issue()
-            ->forOperation('transport-order-123')
-            ->inHomologation()
-            // …
-            ->handle();
+        try {
+            $result = $this->cte
+                ->issue()
+                ->forOperation('transport-order-123')
+                ->inHomologation()
+                // … cadeia tipada …
+                ->handle();
+        } catch (InfrastructureException $e) {
+            $failure = $e->toFailure('issue');
+            // Host: alertar; filar retry conforme $failure->retryPolicy (timeout ambíguo → QueryBeforeRetry)
+            throw $e;
+        }
+
+        if ($result->isAuthorized()) {
+            // Host: persistir accessKey, protocolNumber, submittedDocumentXml, responseXml, receivedAt, operationId
+        }
+
+        if ($result->isRejected()) {
+            $failure = $result->failure();
+            $policy = $result->retryPolicy();
+            match ($policy?->mode) {
+                RetryMode::AfterCorrection => /* remontar issue() com dados corrigidos + novo forOperation */,
+                RetryMode::QueryBeforeRetry => /* byAccessKey() antes de reemitir */,
+                RetryMode::AfterDelay, RetryMode::Immediate => /* filar conforme política */,
+                RetryMode::Never, null => /* definitivo; não reenviar */,
+            };
+        }
+
+        if ($result->isProcessing()) {
+            // Host: consultar por chave/protocolo; não emitir de novo às cegas
+        }
     }
 }
 ```
 
-## Handlers explícitos
+## Handlers explícitos (avançado)
+
+Use quando quiser despachar `IssueCteCommand` / Queries já materializados no container:
 
 ```php
-use Suot\Fiscal\Cte\Application\Command\Issue\IssueCteHandler;
 use Suot\Fiscal\Cte\Application\Command\Issue\IssueCteCommand;
+use Suot\Fiscal\Cte\Application\Command\Issue\IssueCteHandler;
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
 
 final class EmitirViaHandler
 {
@@ -50,7 +81,32 @@ final class EmitirViaHandler
 
     public function __invoke(IssueCteCommand $command): void
     {
-        $result = $this->issueHandler->handle($command);
+        try {
+            $result = $this->issueHandler->handle($command);
+        } catch (InfrastructureException $e) {
+            $failure = $e->toFailure('issue');
+            // Host: alertar; filar retry conforme $failure->retryPolicy
+            throw $e;
+        }
+
+        if ($result->isAuthorized()) {
+            // Host: persistir accessKey, protocolNumber, submittedDocumentXml, responseXml, receivedAt, operationId
+        }
+
+        if ($result->isRejected()) {
+            $failure = $result->failure();
+            $policy = $result->retryPolicy();
+            match ($policy?->mode) {
+                RetryMode::AfterCorrection => /* $command->revise()->withOperationId(…)->…->build() + handle de novo */,
+                RetryMode::QueryBeforeRetry => /* consultar por chave antes de reemitir */,
+                RetryMode::AfterDelay, RetryMode::Immediate => /* filar conforme política */,
+                RetryMode::Never, null => /* definitivo; não reenviar */,
+            };
+        }
+
+        if ($result->isProcessing()) {
+            // Host: consultar por chave/protocolo; não emitir de novo às cegas
+        }
     }
 }
 ```
@@ -61,4 +117,4 @@ Aliases úteis: `fiscal.cte`, `fiscal.cte.handler.issue`, queries `fiscal.cte.qu
 Não injete `Operation/*` (`IssueCte`, `CancelCte`, …) na aplicação — são `@internal`. Use `Cte` ou Handlers públicos.
 </Warning>
 
-Diagnóstico: `php artisan fiscal:cte:status`. Detalhes no README do pacote `packages/laravel`.
+Diagnóstico: `php artisan fiscal:cte:status`. Detalhes no README do pacote `usesuot/fiscal-laravel`.

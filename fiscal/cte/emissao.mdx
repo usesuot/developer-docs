@@ -1,18 +1,18 @@
 ---
 title: "Emitir CT-e"
 sidebarTitle: "Emissão"
-description: "Emita CT-e modelo 57 com $cte->issue()…->handle() ou IssueCteCommand::create()…->build(). Preferir linkedToDocument com CteLinkedDocument."
+description: "Emita CT-e modelo 57 com $cte->issue()…->handle(). Preferir linkedToDocument com CteLinkedDocument."
 ---
 
 ## O quê / quando
 
 Monte a prestação tipada e transmita ao autorizador. Use homologação até ter evidência de homologação e schemas verificados.
 
-## Fluent
-
-A cadeia tipada é a mesma de `IssueCteCommand::create()`. Encerrar em `handle()` no client (ou `build()` + `$cte->handle($command)`).
+## Exemplo
 
 ```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
 use Suot\Fiscal\Core\ValueObject\Uf;
 use Suot\Fiscal\Cte\Data\CteAddress;
 use Suot\Fiscal\Cte\Data\CteCargo;
@@ -27,64 +27,69 @@ $dispatch = new CteMunicipality('4314902', 'Porto Alegre', 'RS');
 $origin = $dispatch;
 $destination = new CteMunicipality('3550308', 'Sao Paulo', 'SP');
 
-$result = $cte->issue()
-    ->forOperation('ot-123-issue')
-    ->inHomologation()
-    ->numbered('1', '1') // série, número
-    ->issuedIn(new Uf('RS'))
-    ->withOperation('5353', 'PRESTACAO DE SERVICO DE TRANSPORTE')
-    ->dispatchedFrom($dispatch)
-    ->issuedBy(new CteEmitter(
-        cnpj: '60708000114',
-        ie: '0961234567',
-        name: 'EMPRESA EMITENTE HOMOLOGACAO',
-        tradeName: 'EMITENTE HOMOLOG',
-        address: new CteAddress(
-            street: 'Rua Teste',
-            number: '100',
-            district: 'Centro',
-            zip: '90000000',
-            municipality: $dispatch,
-        ),
-    ))
-    ->from($origin)
-    ->to($destination)
-    ->forShipper(new CteParty(/* … */))
-    ->deliverTo(new CteParty(/* … */))
-    ->carrying(new CteCargo(value: '1000.00', description: 'MERCADORIAS DIVERSAS', weight: '100.0000'))
-    ->charging(new CteFreight(totalValue: '100.00'))
-    ->taxedBy(new CteTax(icmsValue: '12.00'))
-    ->linkedToDocument(new CteLinkedDocument(nfeKey: $chaveNfe55Digitos))
-    ->underRntrc('12345678')
-    ->handle();
+try {
+    $result = $cte->issue()
+        ->forOperation('ot-123-issue')
+        ->inHomologation()
+        ->numbered('1', '1') // série, número
+        ->issuedIn(new Uf('RS'))
+        ->withOperation('5353', 'PRESTACAO DE SERVICO DE TRANSPORTE')
+        ->dispatchedFrom($dispatch)
+        ->issuedBy(new CteEmitter(
+            cnpj: '60708000114',
+            ie: '0961234567',
+            name: 'EMPRESA EMITENTE HOMOLOGACAO',
+            tradeName: 'EMITENTE HOMOLOG',
+            address: new CteAddress(
+                street: 'Rua Teste',
+                number: '100',
+                district: 'Centro',
+                zip: '90000000',
+                municipality: $dispatch,
+            ),
+        ))
+        ->from($origin)
+        ->to($destination)
+        ->forShipper(new CteParty(/* … */))
+        ->deliverTo(new CteParty(/* … */))
+        ->carrying(new CteCargo(value: '1000.00', description: 'MERCADORIAS DIVERSAS', weight: '100.0000'))
+        ->charging(new CteFreight(totalValue: '100.00'))
+        ->taxedBy(new CteTax(icmsValue: '12.00'))
+        ->linkedToDocument(new CteLinkedDocument(nfeKey: $chaveNfe55Digitos))
+        ->underRntrc('12345678')
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('issue');
+    // Host: alertar; filar retry conforme $failure->retryPolicy (timeout ambíguo → QueryBeforeRetry)
+    throw $e;
+}
+
+if ($result->isAuthorized()) {
+    // Host: persistir accessKey, protocolNumber, submittedDocumentXml, responseXml, receivedAt, operationId
+}
+
+if ($result->isRejected()) {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterCorrection => /* remontar issue() com dados corrigidos + novo forOperation */,
+        RetryMode::QueryBeforeRetry => /* byAccessKey() antes de reemitir */,
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar conforme política */,
+        RetryMode::Never, null => /* definitivo; não reenviar */,
+    };
+}
+
+if ($result->isProcessing()) {
+    // Host: consultar por chave/protocolo; não emitir de novo às cegas
+}
 ```
 
 <Tip>
 Prefira `linkedToDocument(new CteLinkedDocument(…))`. Existe também `linkedToNfe(string $nfeKey)` como atalho de string.
 </Tip>
 
-## Command equivalente
-
-```php
-use Suot\Fiscal\Cte\Application\Command\Issue\IssueCteCommand;
-
-$command = IssueCteCommand::create()
-    ->forOperation('ot-123-issue')
-    ->inHomologation()
-    // … mesma cadeia …
-    ->build();
-
-$result = $cte->handle($command);
-// ou IssueCteHandler::handle($command)
-```
-
-Receita completa de dados estáticos RS: `examples/cte/support/homologation-issue-command.php`.
-
 ## Result
 
 Ver [Resultados da emissão](/fiscal/cte/resultados): `isAuthorized()`, `isRejected()`, `failure()`, `accessKey`, `protocolNumber`, XMLs.
 
-## Exemplos
-
-- `examples/cte/issue-cqrs.php`
-- `bin/dx/02-issue.php`
+Trilha: [Avaliar](/fiscal/avaliar).

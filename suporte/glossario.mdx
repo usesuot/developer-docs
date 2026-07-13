@@ -73,19 +73,16 @@ $policy = RetryPolicy::exponential(maxAttempts: 3, baseDelayMs: 500);
 </Accordion>
 
 <Accordion title="Step Builder">
-Padrão de construção fluente utilizado para **montar a intenção fiscal** (Command/Query) em etapas tipadas. No CT-e, a superfície pública é `IssueCteCommand::create()…->build()` ou `$cte->issue()…->handle()` — não existe `CTeBuilder` na API do consumidor. Cada etapa retorna um tipo concreto para autocomplete; `build()`/`handle()` validam a completude.
+Cadeia tipada para **montar a intenção fiscal** em etapas. No CT-e, a API padrão do consumidor é `$cte->issue()…->handle()` (e demais portas do client). Commands/Queries materializados aparecem no [Laravel Bridge](/fiscal/laravel-bridge). Não existe `CTeBuilder` na API do consumidor. Cada etapa retorna um tipo concreto para autocomplete; `handle()` (ou `build()` ao materializar) valida a completude.
 
 ```php
-$command = IssueCteCommand::create()
+$result = $cte->issue()
     ->forOperation('ot-000123')
     ->inHomologation()
     ->numbered(series: '1', number: '12345')
     ->issuedIn(new Uf('RS'))
     // … issuedBy / from / to / forShipper / …
-    ->build();
-
-// equivalente no client:
-$result = $cte->issue()/* … mesma cadeia */->handle();
+    ->handle();
 ```
 </Accordion>
 
