@@ -11,53 +11,12 @@
   --suot-fog: #f5f7fa;
   --suot-error: #d21f2f;
   --suot-success: #0f9f68;
-  --suot-docs-max-width: 1400px;
 }
 
 /* Keep wordmark readable in the navbar */
 #navbar img,
 header img[alt*="logo" i],
-nav img,
-nav-logo img {
+nav img {
   max-height: 28px;
   width: auto;
-}
-
-/* Center navbar, menu and content; keep gutters on wide screens */
-@media (min-width: 1280px) {
-  :root {
-    --suot-docs-gutter: max(1.5rem, calc((100vw - var(--suot-docs-max-width)) / 2));
-  }
-
-  #navbar,
-  #body-content,
-  #footer,
-  footer {
-    max-width: var(--suot-docs-max-width);
-    margin-left: auto;
-    margin-right: auto;
-    width: 100%;
-    box-sizing: border-box;
-  }
-
-  /* Fixed panels track the centered shell instead of the viewport edge */
-  #sidebar {
-    left: var(--suot-docs-gutter) !important;
-  }
-
-  #table-of-contents,
-  #table-of-contents-layout {
-    right: var(--suot-docs-gutter) !important;
-  }
-}
-
-@media (min-width: 768px) and (max-width: 1279px) {
-  #navbar,
-  #body-content,
-  #footer,
-  footer {
-    padding-left: 1.25rem;
-    padding-right: 1.25rem;
-    box-sizing: border-box;
-  }
 }
