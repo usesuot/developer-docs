@@ -61,7 +61,7 @@ Tip opcional sobre `revise()` apenas em `fiscal/rejeicoes.mdx` ou `fiscal/cte/re
 
 ### Pacotes Composer
 
-Use `suothub/fiscal-core`, `suothub/fiscal-sefaz`, `suothub/fiscal-cte`, `suothub/fiscal-laravel` — não `suot/fiscal-*` inventado.
+Use `suot/fiscal-core`, `suot/fiscal-sefaz`, `suot/fiscal-cte`, `suot/fiscal-laravel` — vendor Composer é `suot`, não `suothub`.
 
 ### Licença e prontidão
 
@@ -78,7 +78,7 @@ Use `suothub/fiscal-core`, `suothub/fiscal-sefaz`, `suothub/fiscal-cte`, `suothu
 
 ### Fonte de verdade do código
 
-Autores **podem** ler `../fiscal-sdk-php` (código-fonte em `packages/`) para garantir precisão de API. **Nunca** cite `examples/`, `bin/`, `bin/dx/` ou caminhos de monorepo em páginas publicadas. Todo snippet de uso vive **inline no MDX** — o consumidor recebe só pacotes Composer (`suothub/fiscal-*`).
+Autores **podem** ler `../fiscal-sdk-php` (código-fonte em `packages/`) para garantir precisão de API. **Nunca** cite `examples/`, `bin/`, `bin/dx/` ou caminhos de monorepo em páginas publicadas. Todo snippet de uso vive **inline no MDX** — o consumidor recebe só pacotes Composer (`suot/fiscal-*`).
 
 ## Estilo
 

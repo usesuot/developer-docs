@@ -1,13 +1,13 @@
 ---
 title: "Laravel Bridge"
 sidebarTitle: "Laravel Bridge"
-description: 'Injete Suot\Fiscal\Cte\Application\Cte no container Laravel via suothub/fiscal-laravel. Handlers explícitos são avançados.'
+description: 'Injete Suot\Fiscal\Cte\Application\Cte no container Laravel via suot/fiscal-laravel. Handlers explícitos são avançados.'
 ---
 
 ## Instalação
 
 ```bash
-composer require suothub/fiscal-laravel
+composer require suot/fiscal-laravel
 php artisan vendor:publish --tag=fiscal-config
 ```
 
@@ -117,4 +117,4 @@ Aliases úteis: `fiscal.cte`, `fiscal.cte.handler.issue`, queries `fiscal.cte.qu
 Não injete `Operation/*` (`IssueCte`, `CancelCte`, …) na aplicação — são `@internal`. Use `Cte` ou Handlers públicos.
 </Warning>
 
-Diagnóstico: `php artisan fiscal:cte:status`. Detalhes no README do pacote `suothub/fiscal-laravel`.
+Diagnóstico: `php artisan fiscal:cte:status`. Detalhes no README do pacote `suot/fiscal-laravel`.
