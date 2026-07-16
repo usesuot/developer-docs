@@ -131,9 +131,31 @@
             ]
           },
           {
-            "group": "Outros documentos",
+            "group": "MDF-e",
             "pages": [
-              "fiscal/mdfe"
+              "fiscal/mdfe/index",
+              "fiscal/mdfe/emissao",
+              "fiscal/mdfe/resultados",
+              "fiscal/mdfe/contingencia",
+              {
+                "group": "Consultas",
+                "pages": [
+                  "fiscal/mdfe/consultas/status-servico",
+                  "fiscal/mdfe/consultas/por-chave",
+                  "fiscal/mdfe/consultas/nao-encerrados",
+                  "fiscal/mdfe/consultas/download-proc",
+                  "fiscal/mdfe/consultas/distribuicao-dfe"
+                ]
+              },
+              {
+                "group": "Eventos",
+                "pages": [
+                  "fiscal/mdfe/eventos/cancelamento",
+                  "fiscal/mdfe/eventos/encerramento",
+                  "fiscal/mdfe/eventos/inclusao-condutor",
+                  "fiscal/mdfe/eventos/inclusao-dfe"
+                ]
+              }
             ]
           },
           {

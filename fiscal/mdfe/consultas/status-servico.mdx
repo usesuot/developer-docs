@@ -1,0 +1,45 @@
+---
+title: "Consultar status do serviço MDF-e"
+sidebarTitle: "Status do serviço"
+description: "Pré-voo: $mdfe->serviceStatus() consulta se o autorizador de MDF-e da UF está operacional."
+---
+
+## O quê / quando
+
+Antes de emitir, confirme se o serviço de autorização da UF do emitente está em operação (`MDFeStatusServico`).
+
+## Exemplo
+
+```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+use Suot\Fiscal\Core\ValueObject\Uf;
+
+try {
+    $result = $mdfe->serviceStatus()
+        ->forOperation('ot-123-mdfe-status')
+        ->inHomologation()
+        ->issuerUf(new Uf('RS'))
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('service_status');
+    // Host: alertar; filar retry conforme $failure->retryPolicy; não emitir às cegas
+    throw $e;
+}
+
+if ($result->isOperational()) {
+    // Host: seguir para emissão
+} else {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar e consultar de novo */,
+        RetryMode::Never, null => /* não emitir; tratar indisponibilidade */,
+        default => /* seguir recoveryGuide */,
+    };
+}
+```
+
+Resultado: `MdfeStatusResult` — `isOperational()` quando `serviceCode === '107'`.
+
+Ver [Emissão](/fiscal/mdfe/emissao).

@@ -1,0 +1,66 @@
+---
+title: "Incluir DF-e no MDF-e"
+sidebarTitle: "Inclusão de DF-e"
+description: "Inclua NF-e/CT-e em MDF-e com carregamento posterior via $mdfe->includeDfe() — evento 110115."
+---
+
+## O quê / quando
+
+Documento fiscal da carga só fica disponível **depois** da autorização do manifesto (coleta em rota). Requer emissão com `withLaterCargoInclusion()` (`ide/indCarregaPosterior=1`) — ver [Emissão](/fiscal/mdfe/emissao).
+
+<Warning>
+Sem `indCarregaPosterior=1`, a SEFAZ rejeita com `cStat 708`. O encadeamento completo `issue` → `includeDfe` com `cStat 100`/`135` ainda **não** foi homologado fim a fim (`cStat 703` na emissão com carregamento posterior). Use com cautela.
+</Warning>
+
+## Exemplo
+
+```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+use Suot\Fiscal\Mdfe\Data\MdfeIncludedDfe;
+use Suot\Fiscal\Mdfe\Data\MdfeMunicipality;
+
+try {
+    $result = $mdfe->includeDfe()
+        ->forOperation('ot-123-mdfe-include-dfe')
+        ->inHomologation()
+        ->accessKey($chave44)
+        ->emitterCnpj($cnpj)
+        ->protocol($nProt)
+        ->loadingAt(new MdfeMunicipality(
+            code: '5107925',
+            name: 'Sinop',
+            uf: 'MT',
+        ))
+        ->including(new MdfeIncludedDfe(
+            unloadingMunicipality: new MdfeMunicipality(
+                code: '4314902',
+                name: 'Porto Alegre',
+                uf: 'RS',
+            ),
+            nfeAccessKey: $chaveNfe44,
+        ))
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('include_dfe');
+    // Host: alertar; QueryBeforeRetry se timeout após envio
+    throw $e;
+}
+
+if ($result->isDfeIncluded()) {
+    // Host: persistir protocolNumber do evento; vincular DF-e à OT
+}
+
+if (! $result->isDfeIncluded()) {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterCorrection => /* corrigir municípios/chave e tentar de novo */,
+        RetryMode::QueryBeforeRetry => /* byAccessKey() antes de reenviar */,
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar conforme política */,
+        RetryMode::Never, null => /* definitivo; não reenviar */,
+    };
+}
+```
+
+Resultado: `IncludeDfeMdfeResult` — `isDfeIncluded()`, `failure()`, `retryPolicy()`.

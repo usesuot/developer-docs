@@ -11,14 +11,15 @@ Instruções para agentes e autores que escrevem documentação neste repositór
 - Frontmatter mínimo: `title`, `sidebarTitle`, `description`
 - Componentes Mintlify quando úteis: `Steps`, `Note`, `Warning`, `Tip`, `Card`, `CardGroup`, `CodeGroup`
 
-## Escopo Fiscal SDK (CT-e)
+## Escopo Fiscal SDK
 
-### Escopo Fiscal SDK (CT-e)
+### API pública (obrigatório)
 
 Documente como API padrão do consumidor:
 
 1. `$cte->…->handle()` — client `Suot\Fiscal\Cte\Application\Cte`
-2. `$cteOs->…->handle()` — client `Suot\Fiscal\CteOs\Application\CteOs` (modelo 67; ver `fiscal/cte-os/`)
+2. `$mdfe->…->handle()` — client `Suot\Fiscal\Mdfe\Application\Mdfe` (modelo 58; ver `fiscal/mdfe/`)
+3. `$cteOs->…->handle()` — client `Suot\Fiscal\CteOs\Application\CteOs` (modelo 67; ver `fiscal/cte-os/`)
 
 Command/Query + Handler (`*Command::create()…->build()` / `*Query::create()…->build()` + `Handler::handle()`) só em:
 
@@ -44,25 +45,26 @@ Tip opcional sobre `revise()` apenas em `fiscal/rejeicoes.mdx` ou `fiscal/cte/re
 
 ### Contingência
 
-`issueInContingency()->issue($command)` exige `IssueCteCommand`. Mostre `$cte->issue()…->build()` e depois a cadeia de contingência, com envelope completo de Result.
+- CT-e: `issueInContingency()->issue($command)` exige `IssueCteCommand`. Mostre `$cte->issue()…->build()` e depois a cadeia (EPEC/SVC).
+- MDF-e: `issueInContingency()->issue($command)` exige `IssueMdfeCommand`. Mostre `$mdfe->issue()…->build()` e depois a cadeia (`tpEmis=2`). Não misture com EPEC/SVC.
 
 ### Nunca documentar como API do consumidor
 
-- `CTeBuilder`, `EmitirCTe*`, `AutorizarNFe*`, `AutorizarCte*`
+- `CTeBuilder`, `MDFeBuilder`, `EmitirCTe*`, `EmitirMDFe*`, `AutorizarNFe*`, `AutorizarCte*`
 - `Operation/*` como entry point (`*Input`, `*::execute()`, `*Service`)
 - `*InputMapper`, `IssueCteCommandBuilder`, `IssueCteCommandParts`
-- `CteClient` como porta principal
+- `CteClient` / clients legados como porta principal
 
 ### Namespaces
 
-- Application: `Suot\Fiscal\Cte\Application\…`
-- Data / VO CT-e: `Suot\Fiscal\Cte\Data\…`, `Suot\Fiscal\Cte\ValueObject\…`
+- Application: `Suot\Fiscal\Cte\Application\…`, `Suot\Fiscal\Mdfe\Application\…`, `Suot\Fiscal\CteOs\Application\…`
+- Data / VO: `Suot\Fiscal\{Cte,Mdfe,CteOs}\Data\…`, `ValueObject\…`
 - Core VO: `Suot\Fiscal\Core\ValueObject\…`
-- Results: `Suot\Fiscal\Cte\Operation\…\*Result` (retorno público; pasta `Operation` de **serviços** continua interna)
+- Results: `Suot\Fiscal\{Cte,Mdfe,CteOs}\Operation\…\*Result` (retorno público; pasta `Operation` de **serviços** continua interna)
 
 ### Pacotes Composer
 
-Use `suot/fiscal-core`, `suot/fiscal-sefaz`, `suot/fiscal-cte`, `suot/fiscal-cte-os`, `suot/fiscal-laravel` — vendor Composer é `suot`, não `suothub`.
+Use `suot/fiscal-core`, `suot/fiscal-sefaz`, `suot/fiscal-cte`, `suot/fiscal-mdfe`, `suot/fiscal-cte-os`, `suot/fiscal-laravel` — vendor Composer é `suot`, não `suothub`.
 
 ### Licença e prontidão
 

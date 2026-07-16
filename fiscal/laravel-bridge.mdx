@@ -154,8 +154,50 @@ Aliases: `fiscal.cte-os`, `fiscal.cte-os.handler.issue`, `fiscal.cte-os.handler.
 
 Diagnóstico: `php artisan fiscal:cte-os:status --uf=TO`.
 
+## Injetar `Mdfe`
+
+Mesmo padrão para MDF-e (modelo 58):
+
+```php
+use Suot\Fiscal\Mdfe\Application\Mdfe;
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+use Suot\Fiscal\Core\ValueObject\Uf;
+
+final class EmitirMdfeAction
+{
+    public function __construct(
+        private readonly Mdfe $mdfe,
+    ) {}
+
+    public function __invoke(): void
+    {
+        try {
+            $result = $this->mdfe
+                ->serviceStatus()
+                ->forOperation('manifest-status')
+                ->inHomologation()
+                ->issuerUf(new Uf('RS'))
+                ->handle();
+        } catch (InfrastructureException $e) {
+            $failure = $e->toFailure('service_status');
+            // Host: alertar; filar retry conforme $failure->retryPolicy
+            throw $e;
+        }
+
+        if ($result->isOperational()) {
+            // Host: seguir para $this->mdfe->issue()…->handle()
+        }
+    }
+}
+```
+
+Aliases: `fiscal.mdfe`, handlers `fiscal.mdfe.handler.*`, queries `fiscal.mdfe.query.*`.
+
+Diagnóstico: `php artisan fiscal:mdfe:status --uf=RS`.
+
 <Warning>
-Não injete `Operation/*` (`IssueCte`, `CancelCte`, …) na aplicação — são `@internal`. Use `Cte` ou Handlers públicos.
+Não injete `Operation/*` (`IssueCte`, `IssueMdfe`, …) na aplicação — são `@internal`. Use `Cte`, `Mdfe`, `CteOs` ou Handlers públicos.
 </Warning>
 
-Diagnóstico: `php artisan fiscal:cte:status`. Detalhes no README do pacote `suot/fiscal-laravel`.
+Diagnóstico CT-e: `php artisan fiscal:cte:status`. Detalhes no README do pacote `suot/fiscal-laravel`.

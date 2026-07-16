@@ -1,0 +1,122 @@
+---
+title: "Emitir MDF-e"
+sidebarTitle: "Emissão"
+description: "Emita MDF-e modelo 58 com $mdfe->issue()…->handle(). Percurso, veículo, CT-e transportado e CIOT tipados."
+---
+
+## O quê / quando
+
+Monte o manifesto tipado e transmita ao autorizador (`MDFeRecepcaoSinc`). Use homologação até ter evidência de homologação e schemas verificados.
+
+Um MDF-e aberto bloqueia novo manifesto para o mesmo veículo na mesma UF de início — encerre antes (`cStat 677` se ignorar).
+
+## Exemplo
+
+```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+use Suot\Fiscal\Core\ValueObject\Uf;
+use Suot\Fiscal\Mdfe\Data\MdfeAddress;
+use Suot\Fiscal\Mdfe\Data\MdfeCargoInsurance;
+use Suot\Fiscal\Mdfe\Data\MdfeCargoTotals;
+use Suot\Fiscal\Mdfe\Data\MdfeCiot;
+use Suot\Fiscal\Mdfe\Data\MdfeDocumentRef;
+use Suot\Fiscal\Mdfe\Data\MdfeDriver;
+use Suot\Fiscal\Mdfe\Data\MdfeEmitter;
+use Suot\Fiscal\Mdfe\Data\MdfeMunicipality;
+use Suot\Fiscal\Mdfe\Data\MdfeRoute;
+use Suot\Fiscal\Mdfe\Data\MdfeVehicle;
+
+$loading = new MdfeMunicipality(code: '5107925', name: 'Sinop', uf: 'MT');
+$unloading = new MdfeMunicipality(code: '4314902', name: 'Porto Alegre', uf: 'RS');
+
+try {
+    $result = $mdfe->issue()
+        ->forOperation('ot-123-mdfe-issue')
+        ->inHomologation()
+        ->issuedIn(new Uf('RS'))
+        ->numbered(serie: '1', number: '12345')
+        ->issuedBy(new MdfeEmitter(
+            cnpj: '60708000114',
+            ie: '0961234567',
+            name: 'EMITENTE HOMOLOG',
+            tradeName: 'EMITENTE HOMOLOG',
+            address: new MdfeAddress(
+                street: 'Rua Teste',
+                number: '100',
+                district: 'Centro',
+                municipalityCode: '4314902',
+                municipalityName: 'Porto Alegre',
+                zip: '90000000',
+                uf: 'RS',
+            ),
+        ))
+        ->route(new MdfeRoute(
+            loading: $loading,
+            unloading: $unloading,
+            transitUfs: ['MT', 'RS'],
+        ))
+        ->vehicle(new MdfeVehicle(
+            plate: 'ABC1234',
+            tareWeightKg: '8000',
+            rntrc: '55603811',
+        ))
+        ->withDriver(new MdfeDriver(name: 'Joao da Silva', cpf: '12345678901'))
+        ->carryingCte(new MdfeDocumentRef(cteAccessKey: $chaveCte44))
+        ->withCargo(new MdfeCargoTotals(
+            cargoValue: '15000.00',
+            weightUnit: '01',
+            grossWeight: '8000.0000',
+        ))
+        ->withCiot(new MdfeCiot(
+            code: '123456789012',
+            responsibleCnpj: $cnpjContratante,
+        ))
+        ->withInsurance(new MdfeCargoInsurance())
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('issue');
+    // Host: alertar; filar retry conforme $failure->retryPolicy (timeout ambíguo → QueryBeforeRetry)
+    throw $e;
+}
+
+if ($result->isAuthorized()) {
+    // Host: persistir accessKey, protocolNumber, submittedDocumentXml, responseXml, receivedAt, operationId
+}
+
+if ($result->isRejected()) {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterCorrection => /* remontar issue() com dados corrigidos + novo forOperation */,
+        RetryMode::QueryBeforeRetry => /* byAccessKey() antes de reemitir */,
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar conforme política */,
+        RetryMode::Never, null => /* definitivo; não reenviar */,
+    };
+}
+
+if ($result->isProcessing()) {
+    // Host: consultar por chave; não emitir de novo às cegas
+}
+```
+
+## Carga incluída depois (`indCarregaPosterior`)
+
+Quando os documentos da carga só existirão após a autorização, use `withLaterCargoInclusion()` — grava `ide/indCarregaPosterior=1`, pré-requisito para [inclusão de DF-e](/fiscal/mdfe/eventos/inclusao-dfe):
+
+```php
+$result = $mdfe->issue()
+    ->forOperation('ot-123-mdfe-later')
+    ->inHomologation()
+    // … demais campos …
+    ->withLaterCargoInclusion()
+    ->handle();
+```
+
+<Warning>
+Sem essa marcação, `includeDfe()` é rejeitado com `cStat 708`. Com a marcação, a homologação SVRS ainda pode rejeitar a emissão com `cStat 703` — combinação de municípios de carga/descarga não fechada. Não force em produção sem revalidar.
+</Warning>
+
+## Result
+
+Ver [Resultados da emissão](/fiscal/mdfe/resultados). Antes de emitir: [Status do serviço](/fiscal/mdfe/consultas/status-servico). Contingência offline: [Contingência](/fiscal/mdfe/contingencia).

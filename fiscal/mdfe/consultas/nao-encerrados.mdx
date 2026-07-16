@@ -1,0 +1,48 @@
+---
+title: "Consultar MDF-e não encerrados"
+sidebarTitle: "Não encerrados"
+description: "Liste MDF-e abertos do emitente com $mdfe->nonClosed() — MDFeConsNaoEnc."
+---
+
+## O quê / quando
+
+Antes de emitir um novo manifesto, ou para reconciliar pátio operacional — consulte MDF-e ainda não encerrados do emitente.
+
+## Exemplo
+
+```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+use Suot\Fiscal\Core\ValueObject\Uf;
+
+try {
+    $result = $mdfe->nonClosed()
+        ->forOperation('ot-123-mdfe-non-closed')
+        ->inHomologation()
+        ->issuerUf(new Uf('RS'))
+        ->emitterCnpj($cnpj)
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('non_closed');
+    // Host: alertar; filar retry conforme $failure->retryPolicy
+    throw $e;
+}
+
+if ($result->isSuccessful()) {
+    // Host: listar chaves abertas; bloquear emissão se a placa/UF conflitar; orientar encerramento
+}
+
+if (! $result->isSuccessful()) {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar nova consulta */,
+        RetryMode::Never, null => /* tratar falha definitiva */,
+        default => /* seguir recoveryGuide */,
+    };
+}
+```
+
+Resultado: `MdfeNonClosedResult` — tipicamente `cStat 111` com documentos não encerrados.
+
+Ver [Encerramento](/fiscal/mdfe/eventos/encerramento).

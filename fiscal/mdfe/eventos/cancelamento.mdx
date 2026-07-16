@@ -1,0 +1,50 @@
+---
+title: "Cancelar MDF-e"
+sidebarTitle: "Cancelamento"
+description: "Cancele MDF-e autorizado com $mdfe->cancel(): chave, CNPJ, protocolo e justificativa (evento 110111)."
+---
+
+## O quê / quando
+
+MDF-e autorizado que precisa ser anulado (evento `110111`). Irreversível. Justificativa com no mínimo 15 caracteres. Dentro do prazo legal do autorizador.
+
+## Exemplo
+
+```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+
+try {
+    $result = $mdfe->cancel()
+        ->forOperation('ot-123-mdfe-cancel')
+        ->inHomologation()
+        ->accessKey($chave44)
+        ->emitterCnpj($cnpj)
+        ->protocol($nProt)
+        ->justification('Cancelamento solicitado pelo cliente')
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('cancel');
+    // Host: alertar; QueryBeforeRetry se timeout após envio — consultar antes de reenviar evento
+    throw $e;
+}
+
+if ($result->isCancelled()) {
+    // Host: persistir protocolNumber do evento, responseXml, accessKey, operationId; marcar manifesto cancelado
+}
+
+if ($result->isRejected()) {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterCorrection => /* corrigir justificativa/protocolo e tentar de novo */,
+        RetryMode::QueryBeforeRetry => /* byAccessKey() antes de reenviar */,
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar conforme política */,
+        RetryMode::Never, null => /* definitivo; não reenviar */,
+    };
+}
+```
+
+Resultado: `CancelMdfeResult` — `isCancelled()`, `isRejected()`, `failure()`, `retryPolicy()`.
+
+Ver [Consulta por chave](/fiscal/mdfe/consultas/por-chave).

@@ -1,0 +1,56 @@
+---
+title: "Encerrar MDF-e"
+sidebarTitle: "Encerramento"
+description: "Encerre MDF-e autorizado com $mdfe->close() — evento 110112, município e data de encerramento."
+---
+
+## O quê / quando
+
+Ao término da viagem, encerre o manifesto (evento `110112`). Obrigatório antes de emitir novo MDF-e para o mesmo veículo na mesma UF de início — a SEFAZ rejeita com `cStat 677` se o anterior permanecer aberto.
+
+## Exemplo
+
+```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+use Suot\Fiscal\Mdfe\Data\MdfeMunicipality;
+
+try {
+    $result = $mdfe->close()
+        ->forOperation('ot-123-mdfe-close')
+        ->inHomologation()
+        ->accessKey($chave44)
+        ->emitterCnpj($cnpj)
+        ->protocol($nProt)
+        ->closedOn('2026-07-15')
+        ->closingAt(new MdfeMunicipality(
+            code: '4314902',
+            name: 'Porto Alegre',
+            uf: 'RS',
+        ))
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('close');
+    // Host: alertar; QueryBeforeRetry se timeout — consultar antes de reenviar
+    throw $e;
+}
+
+if ($result->isClosed()) {
+    // Host: persistir protocolNumber do evento; liberar veículo/UF para novo manifesto
+}
+
+if (! $result->isClosed()) {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterCorrection => /* corrigir município/data/protocolo */,
+        RetryMode::QueryBeforeRetry => /* byAccessKey() / nonClosed() antes de reenviar */,
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar conforme política */,
+        RetryMode::Never, null => /* definitivo; não reenviar */,
+    };
+}
+```
+
+Resultado: `CloseMdfeResult` — `isClosed()`, `failure()`, `retryPolicy()`.
+
+Ver [Não encerrados](/fiscal/mdfe/consultas/nao-encerrados).

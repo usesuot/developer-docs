@@ -1,0 +1,36 @@
+---
+title: "Obter procMDFe"
+sidebarTitle: "Download procMDFe"
+description: "Monte ou recupere o XML protocolado com $mdfe->downloadProc() — assembled ou via distribuição."
+---
+
+## O quê / quando
+
+Após autorização, o host precisa do `procMDFe` para auditoria e armazenamento. Prefira `withSubmittedXml` do Result da emissão quando a distribuição DF-e não estiver disponível.
+
+## Exemplo
+
+```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\ValueObject\Uf;
+
+try {
+    $proc = $mdfe->downloadProc()
+        ->forOperation('ot-123-mdfe-proc')
+        ->inHomologation()
+        ->issuerUf(new Uf('RS'))
+        ->accessKey($issueResult->accessKey)
+        ->withSubmittedXml($issueResult->submittedDocumentXml)
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('download_proc');
+    // Host: alertar; filar retry; não descartar o submittedDocumentXml
+    throw $e;
+}
+
+if ($proc->isFound()) {
+    // Host: persistir $proc->procMdfeXml; source = assembled | distribution
+}
+```
+
+Ver [Distribuição DF-e](/fiscal/mdfe/consultas/distribuicao-dfe) e [Resultados](/fiscal/mdfe/resultados).

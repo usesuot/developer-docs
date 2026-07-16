@@ -1,0 +1,61 @@
+---
+title: "MDF-e — jornada do conhecimento"
+sidebarTitle: "Visão geral"
+description: "Mapa da API pública de MDF-e (modelo 58): emissão, consultas, eventos, contingência e distribuição via $mdfe->…->handle()."
+---
+
+O **MDF-e** (modelo 58) agrupa CT-e e NF-e em uma declaração de carga por viagem. O client público é `Suot\Fiscal\Mdfe\Application\Mdfe` via `$mdfe->…->handle()`.
+
+<Warning>
+Capacidades fiscais só são production-ready após schemas importados, fixtures, ciclo de vida completo e evidência de homologação. O ciclo está **pronto para integração SUOT** (emissão, consulta, não encerrados, cancelamento, encerramento, inclusão de condutor e contingência homologados), mas não é production-ready absoluto — gaps em `includeDfe()` com `indCarregaPosterior` e distribuição DF-e.
+</Warning>
+
+## Jornada
+
+<CardGroup cols={2}>
+  <Card title="Emissão" icon="file-plus" href="/fiscal/mdfe/emissao">
+    `$mdfe->issue()…->handle()` — manifesto rodoviário com CT-e, CIOT e totais.
+  </Card>
+  <Card title="Resultados" icon="circle-check" href="/fiscal/mdfe/resultados">
+    `IssueMdfeResult`: autorizado, rejeitado, `failure()`, campos a persistir.
+  </Card>
+  <Card title="Contingência" icon="triangle-alert" href="/fiscal/mdfe/contingencia">
+    `$mdfe->issueInContingency()` — `tpEmis=2` com QR assinado.
+  </Card>
+</CardGroup>
+
+## Consultas
+
+<CardGroup cols={2}>
+  <Card title="Status do serviço" href="/fiscal/mdfe/consultas/status-servico" />
+  <Card title="Por chave" href="/fiscal/mdfe/consultas/por-chave" />
+  <Card title="Não encerrados" href="/fiscal/mdfe/consultas/nao-encerrados" />
+  <Card title="Download procMDFe" href="/fiscal/mdfe/consultas/download-proc" />
+  <Card title="Distribuição DF-e" href="/fiscal/mdfe/consultas/distribuicao-dfe" />
+</CardGroup>
+
+## Eventos
+
+<CardGroup cols={2}>
+  <Card title="Cancelamento" href="/fiscal/mdfe/eventos/cancelamento" />
+  <Card title="Encerramento" href="/fiscal/mdfe/eventos/encerramento" />
+  <Card title="Inclusão de condutor" href="/fiscal/mdfe/eventos/inclusao-condutor" />
+  <Card title="Inclusão de DF-e" href="/fiscal/mdfe/eventos/inclusao-dfe" />
+</CardGroup>
+
+## Pacote e instalação
+
+```bash
+composer require suot/fiscal-core suot/fiscal-sefaz suot/fiscal-mdfe
+```
+
+Ou meta-pacote: `suot/fiscal`. Laravel (opcional): `suot/fiscal-laravel` registra `Mdfe` e `php artisan fiscal:mdfe:status`. Ver [Laravel Bridge](/fiscal/laravel-bridge).
+
+## Gaps conhecidos
+
+- `includeDfe()` fim a fim com `indCarregaPosterior=1` — bloqueado em homologação (`cStat 703`)
+- `distributeDfe()` — implementado; homologação bloqueada (`cStat 243`)
+
+## Próximos passos
+
+Trilha didática: [Avaliar o SDK](/fiscal/avaliar). CT-e modelo 57: [Visão geral CT-e](/fiscal/cte).

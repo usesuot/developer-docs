@@ -4,7 +4,7 @@ sidebarTitle: "Visão geral"
 description: "Infraestrutura fiscal PHP para transporte: CT-e primeiro, pacotes Composer e caminho avaliar → emitir → instalar."
 ---
 
-Biblioteca PHP **framework-agnostic** para documentos fiscais eletrônicos de transporte. CT-e (modelo 57) e CT-e OS (modelo 67) expõem API pública `$…->handle()`; MDF-e segue o mesmo modelo de Result.
+Biblioteca PHP **framework-agnostic** para documentos fiscais eletrônicos de transporte. CT-e (57), MDF-e (58) e CT-e OS (67) expõem API pública `$…->handle()` com o mesmo modelo de Result.
 
 <Note>
 Ler a documentação não exige licença. Instalar via Composer a partir de `packages.suot.dev` exige organização, licença e token.
@@ -18,6 +18,9 @@ Ler a documentação não exige licença. Instalar via Composer a partir de `pac
   </Card>
   <Card title="CT-e" icon="file-invoice" href="/fiscal/cte">
     Validação, emissão, consultas, eventos e contingência.
+  </Card>
+  <Card title="MDF-e" icon="truck" href="/fiscal/mdfe">
+    Manifesto — emissão, encerramento e eventos.
   </Card>
   <Card title="CT-e OS" icon="bus" href="/fiscal/cte-os">
     Fretamento e outros serviços — modelo 67.
@@ -35,13 +38,13 @@ Ler a documentação não exige licença. Instalar via Composer a partir de `pac
 | `suot/fiscal-sefaz` | Autorizadores e comunicação SEFAZ |
 | `suot/fiscal-cte` | CT-e (API pública `Application\Cte`) |
 | `suot/fiscal-cte-os` | CT-e OS modelo 67 (API pública `Application\CteOs`) |
-| `suot/fiscal-mdfe` | MDF-e (em evolução) |
+| `suot/fiscal-mdfe` | MDF-e modelo 58 (API pública `Application\Mdfe`) |
 | `suot/fiscal-laravel` | Bridge opcional (DI, config) |
 | `suot/fiscal` | Meta-pacote |
 
 ## Princípios
 
-1. API padrão: `$cte->…->handle()` e `$cteOs->…->handle()` — [API pública](/fiscal/api-publica).
+1. API padrão: `$cte->…->handle()`, `$mdfe->…->handle()` e `$cteOs->…->handle()` — [API pública](/fiscal/api-publica).
 2. Rejeição fiscal é **Result**, não exception.
 3. Host persiste, agenda retry e idempotência — o SDK não.
 4. Não declare production-ready sem schemas, fixtures, ciclo de vida e homologação.

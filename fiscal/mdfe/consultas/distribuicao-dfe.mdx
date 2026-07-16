@@ -1,0 +1,62 @@
+---
+title: "Distribuir DF-e de MDF-e"
+sidebarTitle: "Distribuição DF-e"
+description: "Consulta MDFeDistribuicaoDFe com $mdfe->distributeDfe() — NSU e varredura por chave."
+---
+
+## O quê / quando
+
+Sincronize documentos e eventos do Ambiente Nacional. Use `fromUltNsu` para cursor contínuo. Busca por chave não existe no schema — o SDK faz varredura de NSU.
+
+<Warning>
+Homologação AN rejeitou com `cStat 243` ("XML mal formado") na campanha 2026-07-15. API implementada; não declare production-ready sem evidência atualizada.
+</Warning>
+
+## Por NSU
+
+```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\ValueObject\Uf;
+
+try {
+    $result = $mdfe->distributeDfe()
+        ->forOperation('ot-123-mdfe-dist')
+        ->inHomologation()
+        ->issuerUf(new Uf('RS'))
+        ->fromUltNsu('000000000000000')
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('distribute_dfe');
+    // Host: alertar; filar retry; não avançar cursor sem resposta válida
+    throw $e;
+}
+
+// Host: persistir $result->ultNsu sempre
+foreach ($result->procDocuments() as $proc) {
+    // Host: persistir $proc->accessKey e $proc->xml()
+}
+
+foreach ($result->eventDocuments() as $event) {
+    // Host: persistir evento e reconciliar estado do manifesto
+}
+```
+
+## Por chave (varredura)
+
+```php
+try {
+    $result = $mdfe->distributeDfe()
+        ->forOperation('ot-123-mdfe-dist-key')
+        ->inHomologation()
+        ->issuerUf(new Uf('RS'))
+        ->forAccessKey($chave44)
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('distribute_dfe');
+    throw $e;
+}
+
+$proc = $result->findProcByAccessKey($chave44);
+```
+
+Ver [Download procMDFe](/fiscal/mdfe/consultas/download-proc).

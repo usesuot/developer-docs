@@ -1,0 +1,50 @@
+---
+title: "Consultar MDF-e por chave"
+sidebarTitle: "Por chave"
+description: "Situação do MDF-e na SEFAZ com $mdfe->byAccessKey() — essencial em QueryBeforeRetry."
+---
+
+## O quê / quando
+
+Depois de timeout ambíguo, processamento ou para reconciliar estado — consulte pela chave de acesso de 44 dígitos (`MDFeConsulta`).
+
+## Exemplo
+
+```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+
+try {
+    $result = $mdfe->byAccessKey()
+        ->forOperation('ot-123-mdfe-query')
+        ->inHomologation()
+        ->accessKey($chave44)
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('query');
+    // Host: alertar; filar consulta conforme $failure->retryPolicy; não reemitir às cegas
+    throw $e;
+}
+
+if ($result->isFound()) {
+    // Host: reconciliar estado (protocolo, cStat); não reemitir se já autorizado
+}
+
+if (! $result->isFound()) {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar nova consulta */,
+        RetryMode::Never, null => /* decidir reemissão só com novo forOperation se fizer sentido */,
+        default => /* seguir recoveryGuide */,
+    };
+}
+```
+
+Resultado: `MdfeQueryResult`.
+
+<Tip>
+Em risco de duplicidade (`RetryMode::QueryBeforeRetry`), consulte **antes** de reenviar a emissão.
+</Tip>
+
+Ver [Retry](/fiscal/retry).

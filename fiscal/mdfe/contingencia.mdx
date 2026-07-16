@@ -1,0 +1,67 @@
+---
+title: "Emitir MDF-e em contingência"
+sidebarTitle: "Contingência"
+description: "Contingência offline (tpEmis=2) com $mdfe->issueInContingency()->issue($command)->handle() e QR Code assinado."
+---
+
+## O quê / quando
+
+MDF-e **não** usa EPEC/SVC como CT-e. A contingência altera `ide/tpEmis` para `2` e ajusta a chave. Use quando o autorizador normal estiver indisponível e a regra do emitente permitir emissão offline.
+
+## Exemplo
+
+Monte um `IssueMdfeCommand` com `build()` (sem `handle()`), depois passe para a cadeia de contingência:
+
+```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+
+$issueCommand = $mdfe->issue()
+    ->forOperation('ot-123-mdfe-offline')
+    ->inHomologation()
+    ->issuedIn($uf)
+    ->numbered(serie: '1', number: '12346')
+    ->issuedBy($emitter)
+    ->route($route)
+    ->vehicle($vehicle)
+    ->withDriver($driver)
+    ->carryingCte($documentRef)
+    ->withCargo($cargoTotals)
+    ->build(); // IssueMdfeCommand — não chame ->handle() aqui
+
+try {
+    $result = $mdfe->issueInContingency()
+        ->issue($issueCommand)
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('issue_contingency');
+    // Host: alertar; filar retry conforme $failure->retryPolicy
+    throw $e;
+}
+
+if ($result->isAuthorized()) {
+    // Host: persistir $result->issueResult?->accessKey, protocolNumber, submittedDocumentXml
+    // XML inclui QR Code com &sign= — exigido em tpEmis=2
+}
+
+if ($result->isRejected()) {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterCorrection => /* corrigir command e remontar contingência */,
+        RetryMode::QueryBeforeRetry => /* byAccessKey() antes de reemitir */,
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar conforme política */,
+        RetryMode::Never, null => /* definitivo; não reenviar */,
+    };
+}
+```
+
+## QR Code assinado
+
+Em `tpEmis=2`, a SEFAZ exige `&sign=` no QR. Sem isso: `cStat 482`. O SDK assina a chave com o certificado do emitente automaticamente — sem passo extra no host além do certificado configurado.
+
+## Encerramento
+
+Encerre o MDF-e de contingência como um normal — [Encerramento](/fiscal/mdfe/eventos/encerramento) (`110112`).
+
+Ver [Emissão normal](/fiscal/mdfe/emissao).
