@@ -110,6 +110,27 @@
             ]
           },
           {
+            "group": "CT-e OS",
+            "pages": [
+              "fiscal/cte-os/index",
+              "fiscal/cte-os/emissao",
+              "fiscal/cte-os/resultados",
+              {
+                "group": "Consultas",
+                "pages": [
+                  "fiscal/cte-os/consultas/status-servico",
+                  "fiscal/cte-os/consultas/por-chave"
+                ]
+              },
+              {
+                "group": "Eventos",
+                "pages": [
+                  "fiscal/cte-os/eventos/cancelamento"
+                ]
+              }
+            ]
+          },
+          {
             "group": "Outros documentos",
             "pages": [
               "fiscal/mdfe"

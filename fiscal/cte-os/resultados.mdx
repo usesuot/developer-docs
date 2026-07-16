@@ -1,0 +1,67 @@
+---
+title: "Ler o resultado da emissão CT-e OS"
+sidebarTitle: "Resultados"
+description: "IssueCteOsResult: isAuthorized, isRejected, failure, retryPolicy e campos que o host deve persistir."
+---
+
+## O quê / quando
+
+Toda emissão devolve `Suot\Fiscal\CteOs\Operation\Issue\IssueCteOsResult`. Rejeição fiscal é **Result** — não exception.
+
+## Interpretar
+
+```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+
+try {
+    $result = $cteOs->issue()
+        ->forOperation('ot-456-issue')
+        ->inHomologation()
+        // … cadeia …
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('issue');
+    // Host: alertar; filar retry conforme $failure->retryPolicy (timeout ambíguo → QueryBeforeRetry)
+    throw $e;
+}
+
+if ($result->isAuthorized()) {
+    // Host: persistir accessKey, protocolNumber, submittedDocumentXml, responseXml, receivedAt, operationId
+}
+
+if ($result->isRejected()) {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    // $failure->code, recoveryGuide, ResolutionStep::relatedField (ex.: route.transitUfs, travelDateTime)
+    match ($policy?->mode) {
+        RetryMode::AfterCorrection => /* remontar issue() com dados corrigidos + novo forOperation */,
+        RetryMode::QueryBeforeRetry => /* byAccessKey() antes de reemitir */,
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar conforme política */,
+        RetryMode::Never, null => /* definitivo; não reenviar */,
+    };
+}
+
+if ($result->isProcessing()) {
+    // Host: consultar por chave; não emitir de novo às cegas
+}
+```
+
+## Campos a persistir (host)
+
+| Campo | Quando |
+|---|---|
+| `accessKey` | Autorizado |
+| `protocolNumber` | Autorizado |
+| `submittedDocumentXml` | XML do CT-e OS enviado |
+| `responseXml` | Auditoria / protocolo |
+| `receivedAt` | Timestamp de retorno |
+| `metadata.operationId` | Idempotência no host |
+
+O SDK **não** persiste. O host grava os campos acima a partir do Result.
+
+## Corrigir e reenviar
+
+Com `AfterCorrection`, remonte `$cteOs->issue()…` com dados corrigidos e novo `forOperation`. Não reutilize XML assinado após mudar dados fiscais.
+
+Página transversal: [Resultados](/fiscal/resultados). Rejeições comuns: [Rejeições](/fiscal/rejeicoes).

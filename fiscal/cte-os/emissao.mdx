@@ -1,0 +1,123 @@
+---
+title: "Emitir CT-e OS"
+sidebarTitle: "Emissão"
+description: "Emita CT-e OS modelo 67 (fretamento rodoviário) com $cteOs->issue()…->handle()."
+---
+
+## O quê / quando
+
+Use CT-e OS para **transporte de pessoas** (fretamento eventual ou contínuo), valores ou excesso de bagagem. Transmita ao autorizador via `CTeRecepcaoOSV4`. Use homologação até ter evidência completa de homologação.
+
+Interestadual exige **UFs de percurso** (`route.transitUfs` → `ide/infPercurso/UFPer`) quando origem e destino estão em estados distintos. Fretamento eventual exige **data e hora da viagem** válidas em `byRoad()` (`dhViagem`).
+
+## Exemplo
+
+```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+use Suot\Fiscal\Core\ValueObject\Uf;
+use Suot\Fiscal\CteOs\Data\CteOsAddress;
+use Suot\Fiscal\CteOs\Data\CteOsEmitter;
+use Suot\Fiscal\CteOs\Data\CteOsMunicipality;
+use Suot\Fiscal\CteOs\Data\CteOsRoadModal;
+use Suot\Fiscal\CteOs\Data\CteOsRoute;
+use Suot\Fiscal\CteOs\Data\CteOsService;
+use Suot\Fiscal\CteOs\Data\CteOsTaker;
+use Suot\Fiscal\CteOs\Data\CteOsValues;
+use Suot\Fiscal\CteOs\ValueObject\CteOsServiceType;
+
+$palmas = new CteOsMunicipality('1721000', 'Palmas', 'TO');
+$saoPaulo = new CteOsMunicipality('3550308', 'Sao Paulo', 'SP');
+
+try {
+    $result = $cteOs->issue()
+        ->forOperation('ot-456-issue')
+        ->inHomologation()
+        ->issuedIn(new Uf('TO'))
+        ->numbered('1', '42')
+        ->withOperation('6912', 'Transporte de pessoas')
+        ->dispatchedFrom($palmas)
+        ->issuedBy(new CteOsEmitter(
+            cnpj: '60708000114',
+            ie: '0961234567',
+            name: 'EMITENTE HOMOLOG',
+            tradeName: 'EMITENTE HOMOLOG',
+            address: new CteOsAddress(
+                street: 'Rua Teste',
+                number: '100',
+                district: 'Centro',
+                zip: '77000000',
+                municipality: $palmas,
+            ),
+        ))
+        ->takenBy(new CteOsTaker(
+            document: '11444777000161',
+            name: 'TOMADOR HOMOLOGACAO',
+            address: new CteOsAddress(
+                street: 'Avenida Paulista',
+                number: '1000',
+                district: 'Bela Vista',
+                zip: '01310100',
+                municipality: $saoPaulo,
+            ),
+            ie: '0961234567',
+        ))
+        ->forService(new CteOsService(
+            type: CteOsServiceType::People,
+            description: 'FRETAMENTO EVENTUAL',
+            quantity: '40.0000',
+        ))
+        ->route(new CteOsRoute(
+            origin: $palmas,
+            destination: $saoPaulo,
+            transitUfs: [new Uf('GO'), new Uf('MG')],
+        ))
+        ->withValues(new CteOsValues(
+            totalValue: '1000.00',
+            receivableValue: '1000.00',
+            icmsBase: '1000.00',
+            icmsRate: '12.00',
+            icmsValue: '120.00',
+        ))
+        ->byRoad(new CteOsRoadModal(
+            registrationNumber: '123456789012',
+            charterType: '1',
+            travelDateTime: '2026-08-01T08:00:00-03:00',
+            plate: 'ABC1D23',
+        ))
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('issue');
+    // Host: alertar; filar retry conforme $failure->retryPolicy (timeout ambíguo → QueryBeforeRetry)
+    throw $e;
+}
+
+if ($result->isAuthorized()) {
+    // Host: persistir accessKey, protocolNumber, submittedDocumentXml, responseXml, receivedAt, operationId
+}
+
+if ($result->isRejected()) {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterCorrection => /* remontar issue() com dados corrigidos + novo forOperation */,
+        RetryMode::QueryBeforeRetry => /* byAccessKey() antes de reemitir */,
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar conforme política */,
+        RetryMode::Never, null => /* definitivo; não reenviar */,
+    };
+}
+
+if ($result->isProcessing()) {
+    // Host: consultar por chave antes de reemitir; não emitir de novo às cegas
+}
+```
+
+<Tip>
+Rejeição `753` (percurso inválido) indica UFs intermediárias ausentes ou inconsistentes. Rejeição `838` aponta para `travelDateTime` (`dhViagem`) inválido — use ISO 8601 com fuso e data/hora coerentes com o fretamento eventual.
+</Tip>
+
+## Result
+
+Ver [Resultados da emissão](/fiscal/cte-os/resultados): `isAuthorized()`, `isRejected()`, `failure()`, `accessKey`, `protocolNumber`, XMLs.
+
+Trilha: [Status do serviço](/fiscal/cte-os/consultas/status-servico) antes de emitir.

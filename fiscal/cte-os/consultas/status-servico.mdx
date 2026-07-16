@@ -1,0 +1,44 @@
+---
+title: "Consultar status do serviço CT-e OS"
+sidebarTitle: "Status do serviço"
+description: "Pré-voo: $cteOs->serviceStatus() consulta se o autorizador de CT-e OS da UF está operacional."
+---
+
+## O quê / quando
+
+Antes de emitir CT-e OS, confirme se o serviço de autorização da UF do emitente está em operação. CT-e OS reutiliza o endpoint de status do projeto CT-e (`CteStatusServicoV4`).
+
+## Exemplo
+
+```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+
+try {
+    $result = $cteOs->serviceStatus()
+        ->forOperation('ot-456-status')
+        ->forUf('TO')
+        ->inHomologation()
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('service_status');
+    // Host: alertar; filar retry conforme $failure->retryPolicy; não emitir às cegas
+    throw $e;
+}
+
+if ($result->isOperational()) {
+    // Host: seguir para emissão
+} else {
+    $failure = $result->failure();
+    $policy = $result->retryPolicy();
+    match ($policy?->mode) {
+        RetryMode::AfterDelay, RetryMode::Immediate => /* filar e consultar de novo */,
+        RetryMode::Never, null => /* não emitir; tratar indisponibilidade */,
+        default => /* seguir recoveryGuide */,
+    };
+}
+```
+
+Resultado: `CteOsStatusResult` (`serviceCode`, `message`, `isOperational()`, `failure()`, `retryPolicy()`). `cStat 107` indica serviço em operação.
+
+Ver [Emissão](/fiscal/cte-os/emissao).

@@ -1,0 +1,51 @@
+---
+title: "CT-e OS — jornada do conhecimento"
+sidebarTitle: "Visão geral"
+description: "Mapa da API pública de CT-e OS (modelo 67): emissão de fretamento, consultas e cancelamento via $cteOs->…->handle()."
+---
+
+O **CT-e OS** (modelo 67) cobre transporte de pessoas, valores e excesso de bagagem. O client público é `Suot\Fiscal\CteOs\Application\CteOs` via `$cteOs->…->handle()`.
+
+<Warning>
+Capacidades fiscais só são production-ready após schemas importados, fixtures, ciclo de vida completo e evidência de homologação. O ciclo mínimo (status, emissão, consulta, cancelamento) está implementado, mas a homologação de emissão ainda **não** atingiu `cStat 100`.
+</Warning>
+
+## Jornada
+
+<CardGroup cols={2}>
+  <Card title="Emissão" icon="file-plus" href="/fiscal/cte-os/emissao">
+    `$cteOs->issue()…->handle()` — fretamento rodoviário e percurso interestadual.
+  </Card>
+  <Card title="Resultados" icon="circle-check" href="/fiscal/cte-os/resultados">
+    `IssueCteOsResult`: autorizado, rejeitado, `failure()`, campos a persistir.
+  </Card>
+</CardGroup>
+
+## Consultas
+
+<CardGroup cols={2}>
+  <Card title="Status do serviço" href="/fiscal/cte-os/consultas/status-servico" />
+  <Card title="Por chave" href="/fiscal/cte-os/consultas/por-chave" />
+</CardGroup>
+
+## Eventos
+
+<CardGroup cols={2}>
+  <Card title="Cancelamento" href="/fiscal/cte-os/eventos/cancelamento" />
+</CardGroup>
+
+## Pacote e instalação
+
+```bash
+composer require suot/fiscal-core suot/fiscal-sefaz suot/fiscal-cte-os
+```
+
+Laravel (opcional): `suot/fiscal-laravel` registra `CteOs` e `php artisan fiscal:cte-os:status`. Ver [Laravel Bridge](/fiscal/laravel-bridge).
+
+## Fora desta onda
+
+CC-e (`110110`), GTV (`110170`) e distribuição DF-e ficam fora do ciclo mínimo documentado aqui.
+
+## Próximos passos
+
+Trilha didática: [Avaliar o SDK](/fiscal/avaliar). CT-e modelo 57: [Visão geral CT-e](/fiscal/cte).

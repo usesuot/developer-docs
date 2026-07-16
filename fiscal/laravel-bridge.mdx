@@ -113,6 +113,47 @@ final class EmitirViaHandler
 
 Aliases úteis: `fiscal.cte`, `fiscal.cte.handler.issue`, queries `fiscal.cte.query.*`.
 
+## Injetar `CteOs`
+
+Mesmo padrão para CT-e OS (modelo 67):
+
+```php
+use Suot\Fiscal\CteOs\Application\CteOs;
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+
+final class EmitirCteOsAction
+{
+    public function __construct(
+        private readonly CteOs $cteOs,
+    ) {}
+
+    public function __invoke(): void
+    {
+        try {
+            $result = $this->cteOs
+                ->serviceStatus()
+                ->forOperation('charter-status')
+                ->forUf('TO')
+                ->inHomologation()
+                ->handle();
+        } catch (InfrastructureException $e) {
+            $failure = $e->toFailure('service_status');
+            // Host: alertar; filar retry conforme $failure->retryPolicy
+            throw $e;
+        }
+
+        if ($result->isOperational()) {
+            // Host: seguir para $this->cteOs->issue()…->handle()
+        }
+    }
+}
+```
+
+Aliases: `fiscal.cte-os`, `fiscal.cte-os.handler.issue`, `fiscal.cte-os.handler.cancel`, queries `fiscal.cte-os.query.*`.
+
+Diagnóstico: `php artisan fiscal:cte-os:status --uf=TO`.
+
 <Warning>
 Não injete `Operation/*` (`IssueCte`, `CancelCte`, …) na aplicação — são `@internal`. Use `Cte` ou Handlers públicos.
 </Warning>

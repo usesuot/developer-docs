@@ -43,6 +43,23 @@ Portas no mesmo client: `issue()`, `validate()`, `cancel()`, `correct()`, `servi
 
 Namespace: `Suot\Fiscal\Cte\Application\Cte`.
 
+## Client `$cteOs` (modelo 67)
+
+CT-e OS usa o mesmo padrão com `Suot\Fiscal\CteOs\Application\CteOs`:
+
+```php
+use Suot\Fiscal\CteOs\Application\CteOs;
+
+// $cteOs injetado via DI ou Laravel Bridge (alias fiscal.cte-os)
+$result = $cteOs->issue()
+    ->forOperation('charter-1')
+    ->inHomologation()
+    // … cadeia tipada …
+    ->handle();
+```
+
+Portas: `serviceStatus()`, `issue()`, `byAccessKey()`, `cancel()`. Jornada completa: [CT-e OS](/fiscal/cte-os).
+
 No Laravel, Handlers explícitos são opcionais — ver [Laravel Bridge](/fiscal/laravel-bridge).
 
 ## O que é @internal
@@ -64,4 +81,5 @@ Rejeição fiscal válida volta como `Result` (`isRejected()`, `failure()`), nã
 
 - [Avaliar sem conta](/fiscal/avaliar) — trilha de aprendizado da API
 - [CT-e](/fiscal/cte) — jornada do documento
+- [CT-e OS](/fiscal/cte-os) — fretamento e modelo 67
 - [Instalação](/fiscal/instalacao) — Composer + registry

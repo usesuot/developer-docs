@@ -13,11 +13,12 @@ Instruções para agentes e autores que escrevem documentação neste repositór
 
 ## Escopo Fiscal SDK (CT-e)
 
-### API pública (obrigatório)
+### Escopo Fiscal SDK (CT-e)
 
 Documente como API padrão do consumidor:
 
 1. `$cte->…->handle()` — client `Suot\Fiscal\Cte\Application\Cte`
+2. `$cteOs->…->handle()` — client `Suot\Fiscal\CteOs\Application\CteOs` (modelo 67; ver `fiscal/cte-os/`)
 
 Command/Query + Handler (`*Command::create()…->build()` / `*Query::create()…->build()` + `Handler::handle()`) só em:
 
@@ -61,7 +62,7 @@ Tip opcional sobre `revise()` apenas em `fiscal/rejeicoes.mdx` ou `fiscal/cte/re
 
 ### Pacotes Composer
 
-Use `suot/fiscal-core`, `suot/fiscal-sefaz`, `suot/fiscal-cte`, `suot/fiscal-laravel` — vendor Composer é `suot`, não `suothub`.
+Use `suot/fiscal-core`, `suot/fiscal-sefaz`, `suot/fiscal-cte`, `suot/fiscal-cte-os`, `suot/fiscal-laravel` — vendor Composer é `suot`, não `suothub`.
 
 ### Licença e prontidão
 
