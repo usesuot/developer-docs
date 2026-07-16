@@ -148,6 +148,13 @@
                 "pages": [
                   "fiscal/bpe/eventos/cancelamento"
                 ]
+              },
+              {
+                "group": "BP-e TM",
+                "pages": [
+                  "fiscal/bpe/tm/index",
+                  "fiscal/bpe/tm/emissao"
+                ]
               }
             ]
           },

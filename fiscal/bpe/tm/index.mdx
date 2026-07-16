@@ -1,0 +1,44 @@
+---
+title: "BP-e TM — transporte metropolitano"
+sidebarTitle: "Visão geral TM"
+description: "API pública de BP-e TM (modelo 63, tpBPe=4) via $bpeTm->…->handle(): emissão metropolitana, consultas e cancelamento compartilhados."
+---
+
+O **BP-e TM** cobre bilhete de passagem de **transporte metropolitano**. O client público é `Suot\Fiscal\Bpe\Application\BpeTm` via `$bpeTm->…->handle()`.
+
+A emissão usa o serviço dedicado `BPeRecepcaoTM` e o XML raiz `BPeTM`. Status, consulta por chave e cancelamento (`110111`) reutilizam os mesmos web services do BP-e padrão.
+
+<Warning>
+Capacidades fiscais só são production-ready após schemas importados, fixtures, ciclo de vida completo e evidência de homologação. Status do serviço homologado com `cStat 107` (2026-07-16). Emissão TM em homologação retornou `cStat 203` (emitente não habilitado para BP-e) — mesmo bloqueio cadastral do BP-e padrão.
+</Warning>
+
+## Jornada
+
+<CardGroup cols={2}>
+  <Card title="Emissão TM" icon="bus" href="/fiscal/bpe/tm/emissao">
+    `$bpeTm->issue()…->handle()` — competência, equipamentos e trechos metropolitanos.
+  </Card>
+  <Card title="BP-e padrão" icon="ticket" href="/fiscal/bpe">
+    Passagem rodoviária regular via `$bpe->…->handle()`.
+  </Card>
+</CardGroup>
+
+## Consultas e eventos (compartilhados)
+
+Use o client TM com as mesmas operações de status, consulta e cancelamento:
+
+- [Status do serviço](/fiscal/bpe/consultas/status-servico) — via `$bpeTm->serviceStatus()`
+- [Por chave](/fiscal/bpe/consultas/por-chave) — via `$bpeTm->byAccessKey()`
+- [Cancelamento](/fiscal/bpe/eventos/cancelamento) — via `$bpeTm->cancel()`
+
+## Pacote
+
+```bash
+composer require suot/fiscal-core suot/fiscal-sefaz suot/fiscal-bpe
+```
+
+Contadores de embarque, equipamentos e caixa metropolitano ficam no host — o SDK trata o documento fiscal.
+
+## Fora desta onda
+
+BP-e TA (aéreo) **não** está disponível nesta onda.

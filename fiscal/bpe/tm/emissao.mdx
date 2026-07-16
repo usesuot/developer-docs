@@ -1,0 +1,99 @@
+---
+title: "Emitir BP-e TM"
+sidebarTitle: "Emissão TM"
+description: "Emita BP-e TM (transporte metropolitano, modelo 63, tpBPe=4) com $bpeTm->issue()…->handle() via BPeRecepcaoTM."
+---
+
+## O quê / quando
+
+Use BP-e TM para **transporte metropolitano** — documento fiscal com `dCompet`, grupos `detBPeTM` (equipamento contador e trechos) e totais agregados. Transmita ao autorizador via `BPeRecepcaoTM` (não use `BPeRecepcao` do BP-e padrão).
+
+O schema `TBPeTM` **não** inclui `infBPeSupl` no XML assinado (QR Code fica fora do documento assinado, a cargo do host no DABPE quando aplicável).
+
+## Exemplo
+
+```php
+use Suot\Fiscal\Core\Exception\InfrastructureException;
+use Suot\Fiscal\Core\Result\RetryMode;
+use Suot\Fiscal\Core\ValueObject\Uf;
+use Suot\Fiscal\Bpe\Data\BpeAddress;
+use Suot\Fiscal\Bpe\Data\BpeEmitter;
+use Suot\Fiscal\Bpe\Data\BpeMunicipality;
+use Suot\Fiscal\Bpe\Data\BpeTmComponent;
+use Suot\Fiscal\Bpe\Data\BpeTmDetailGroup;
+use Suot\Fiscal\Bpe\Data\BpeTmTotals;
+use Suot\Fiscal\Bpe\Data\BpeTmTripSegment;
+
+$palmas = new BpeMunicipality('1721000', 'Palmas', 'TO');
+
+try {
+    $result = $bpeTm->issue()
+        ->forOperation('metro-batch-42-issue')
+        ->inHomologation()
+        ->issuedIn(new Uf('TO'))
+        ->numbered('1', '42')
+        ->competenceDate('2026-07-15')
+        ->cfop('5357')
+        ->issuedBy(new BpeEmitter(
+            cnpj: '60708000114',
+            ie: '0961234567',
+            name: 'BPE TM EMITIDO EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL',
+            tradeName: 'OPERADOR METRO HOMOLOG',
+            address: new BpeAddress(
+                street: 'Rua Teste',
+                number: '100',
+                district: 'Centro',
+                zip: '77000000',
+                municipality: $palmas,
+            ),
+        ))
+        ->withDetailGroup(new BpeTmDetailGroup(
+            equipmentCounterId: '1',
+            tripStartUf: 'TO',
+            segments: [
+                new BpeTmTripSegment(
+                    tripNumber: '1',
+                    originMunicipalityCode: '1721000',
+                    passengerQuantity: '10',
+                    ticketValueSum: '50.00',
+                    icmsCst: '00',
+                    components: [new BpeTmComponent('VT', '00010')],
+                    destinationMunicipalityCode: '1721000',
+                    icmsBase: '50.00',
+                    icmsRate: '12.00',
+                    icmsValue: '6.00',
+                ),
+            ],
+            tripEndUf: 'TO',
+        ))
+        ->withTotals(new BpeTmTotals(
+            passengerQuantity: '10',
+            ticketValue: '50.00',
+            icmsBase: '50.00',
+            icmsValue: '6.00',
+        ))
+        ->handle();
+} catch (InfrastructureException $e) {
+    $failure = $e->toFailure('issue');
+    // Host: alertar; filar retry conforme $failure->retryPolicy (timeout ambíguo → QueryBeforeRetry)
+    throw $e;
+}
+
+if ($result->isAuthorized()) {
+    // Host: persistir XML, protocolo, chave; não reemitir o mesmo operationId
+} elseif ($result->isRejected()) {
+    $error = $result->failure();
+    // Host: corrigir dados ou cadastro; não reenviar cego
+} elseif ($result->isProcessing()) {
+    $policy = $result->retryPolicy();
+    // Host: consultar por chave antes de retry se RetryMode exigir
+}
+```
+
+## Como ler o Result
+
+O retorno é o mesmo `IssueBpeResult` do BP-e padrão. Veja [Resultados](/fiscal/bpe/resultados).
+
+## Endpoints
+
+`BPeRecepcaoTM` está listado no portal para **SVRS** (produção e homologação) e **MG homologação**. MG produção e MS/MT/PR/SP **não** listavam o serviço na data da importação (2026-07-16) — o dataset do SDK preserva essa cobertura real.
