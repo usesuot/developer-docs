@@ -10,6 +10,8 @@ Use o CT-e Simplificado para consolidar **várias prestações** (rotas em `det`
 
 Em homologação, a razão social do tomador deve ser `CTE EMITIDO EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL`.
 
+Em produção, informe IBS/CBS com `->withIbsCbs(...)`. Em homologação, o SDK pode preencher o bloco de teste NT 2026.002 se você omitir o método.
+
 ## Exemplo — emissão normal (tpCTe=5)
 
 ```php
