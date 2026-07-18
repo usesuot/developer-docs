@@ -16,6 +16,9 @@ Capacidades fiscais só são production-ready após schemas importados, fixtures
   <Card title="Emissão" icon="ticket" href="/fiscal/bpe/emissao">
     `$bpe->issue()…->handle()` — passagem rodoviária, trecho, valores e pagamento.
   </Card>
+  <Card title="DABPE" icon="file-pdf" href="/fiscal/bpe/dabpe">
+    `$bpe->renderDabpe()…->handle()` — PDF auxiliar (Thermal80/A4), local, sem SEFAZ.
+  </Card>
   <Card title="Resultados" icon="circle-check" href="/fiscal/bpe/resultados">
     `IssueBpeResult`: autorizado, rejeitado, `failure()`, campos a persistir.
   </Card>

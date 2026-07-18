@@ -144,6 +144,7 @@
             "pages": [
               "fiscal/bpe/index",
               "fiscal/bpe/emissao",
+              "fiscal/bpe/dabpe",
               "fiscal/bpe/resultados",
               {
                 "group": "Consultas",
