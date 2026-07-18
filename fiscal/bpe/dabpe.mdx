@@ -1,0 +1,108 @@
+---
+title: "Gerar DABPE (PDF auxiliar)"
+sidebarTitle: "DABPE"
+description: "Gere o DABPE em PDF a partir do XML do BP-e ou bpeProc com $bpe->renderDabpe() — operação local, sem SEFAZ."
+---
+
+## O quê / quando
+
+O DABPE é o documento auxiliar impresso do BP-e (modelo 63). Use `$bpe->renderDabpe()` quando o host já tem o XML autorizado (`bpeProc` / `procBPe`) ou o bilhete em contingência e precisa do PDF para arquivo, download ou impressão térmica.
+
+A operação é **local**: não consulta a SEFAZ. O host persiste e entrega o PDF.
+
+<Warning>
+A geração do DABPE no SDK ainda **não** é production-ready: falta revisão visual contra o anexo gráfico do MOC e evidência de uso no host. Cobertura atual: Thermal80 e A4 (normal/homologação + contingência `tpEmis=2`). BP-e metropolitano não tem DABPE oficial.
+</Warning>
+
+## Exemplo — gerar PDF
+
+```php
+use Suot\Fiscal\Bpe\Dabpe\Enum\DabpeTemplate;
+use Suot\Fiscal\Bpe\Dabpe\Exception\DabpeXmlException;
+
+try {
+    $result = $bpe->renderDabpe()
+        ->fromXml($procBpeXml)
+        ->template(DabpeTemplate::Thermal80)
+        ->handle();
+} catch (DabpeXmlException $e) {
+    // Host: XML inválido, metropolitano ou QR inconsistente (modo estrito); corrigir origem e não gerar PDF
+    throw $e;
+}
+
+if ($result->isPdf()) {
+    // Host: persistir pdfBytes, accessKey, pageCount; expor download / enviar à impressora
+    $pdf = $result->pdfBytes();
+    $chave = $result->accessKey();
+    $xmlHash = $result->metadata()['xmlSha256'] ?? null;
+}
+
+foreach ($result->warnings() as $warning) {
+    // Host: registrar warning.code / warning.message
+}
+```
+
+## Result (`RenderDabpeResult`)
+
+| Método | Uso |
+|---|---|
+| `isPdf()` | Bytes começam com `%PDF` |
+| `pdfBytes()` | Conteúdo do PDF |
+| `accessKey()` | Chave de 44 dígitos |
+| `pageCount()` | Páginas geradas |
+| `template()` | Template usado (`thermal-80` / `a4`) |
+| `warnings()` | Avisos de layout |
+| `metadata()` | `modal`, `tpAmb`, `tpEmis`, `tpBPe`, `contingency`, `xmlSha256`, … |
+
+## Extrair campos (sem PDF)
+
+```php
+use Suot\Fiscal\Bpe\Dabpe\Exception\DabpeXmlException;
+
+try {
+    $extract = $bpe->renderDabpe()
+        ->fromXml($procBpeXml)
+        ->extract();
+} catch (DabpeXmlException $e) {
+    // Host: XML não parseável ou metropolitano; não indexar
+    throw $e;
+}
+
+$chave = $extract->accessKey();
+$campos = $extract->fields(); // emitente, viagem, valores, passageiro, …
+$hash = $extract->xmlSha256();
+```
+
+## Validar se dá para imprimir
+
+```php
+$report = $bpe->renderDabpe()
+    ->fromXml($procBpeXml)
+    ->validatePrintable();
+
+if ($report->isPrintable()) {
+    // Host: pode chamar ->handle() e persistir o PDF
+}
+
+if (! $report->isPrintable()) {
+    foreach ($report->errors() as $issue) {
+        // Host: corrigir issue.field / issue.code (SDK-XML-*, SDK-QR-*, SDK-DABPE-001, …)
+    }
+}
+```
+
+## Cobertura atual
+
+- Templates Thermal80 e A4
+- Homologação (`tpAmb=2`)
+- Contingência offline (`tpEmis=2`, QR com `sign`, banners)
+- `extract()` / `validatePrintable()`
+- Recusa de BP-e metropolitano (`BPeTM` / `tpBPe=4` → `SDK-DABPE-001`)
+
+Fora deste corte: térmico 58 mm, PDF417, assinatura XML na geração.
+
+## Próximos passos
+
+- Emitir BP-e: [Emissão](/fiscal/bpe/emissao)
+- Consultar por chave: [Por chave](/fiscal/bpe/consultas/por-chave)
+- Jornada: [Visão geral BP-e](/fiscal/bpe)
