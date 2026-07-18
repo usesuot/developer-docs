@@ -1,0 +1,146 @@
+---
+title: "Gerar DACTE (PDF auxiliar)"
+sidebarTitle: "DACTE"
+description: "Gere o DACTE em PDF a partir do XML do CT-e ou procCTe com $cte->renderDacte() — operação local, sem SEFAZ."
+---
+
+## O quê / quando
+
+O DACTE é o documento auxiliar impresso do CT-e (modelo 57). Use `$cte->renderDacte()` quando o host já tem o XML autorizado (`procCTe`) ou o CT-e assinado e precisa do PDF para arquivo, download ou impressão.
+
+A operação é **local**: não consulta a SEFAZ. O host persiste e entrega o PDF.
+
+<Warning>
+A geração do DACTE no SDK ainda **não** é production-ready: falta revisão visual contra o Anexo II (MOC) e evidência de uso no host. A API abaixo descreve o contrato atual.
+</Warning>
+
+## Exemplo — gerar PDF
+
+```php
+use Suot\Fiscal\Cte\Dacte\Enum\PaperSize;
+use Suot\Fiscal\Cte\Dacte\Exception\DacteXmlException;
+
+try {
+    $result = $cte->renderDacte()
+        ->fromXml($procCteXml)
+        ->paperSize(PaperSize::A4)
+        ->handle();
+} catch (DacteXmlException $e) {
+    // Host: XML inválido ou QR inconsistente (modo estrito); corrigir origem e não gerar PDF
+    throw $e;
+}
+
+if ($result->isPdf()) {
+    // Host: persistir pdfBytes, accessKey, pageCount; expor download
+    $pdf = $result->pdfBytes();
+    $chave = $result->accessKey();
+    $paginas = $result->pageCount();
+    $xmlHash = $result->metadata()['xmlSha256'] ?? null;
+}
+
+foreach ($result->warnings() as $warning) {
+    // Host: registrar warning.code / warning.message (ex.: overflow → folha adicional)
+}
+```
+
+## Result (`RenderDacteResult`)
+
+| Método | Uso |
+|---|---|
+| `isPdf()` | Bytes começam com `%PDF` |
+| `pdfBytes()` | Conteúdo do PDF |
+| `accessKey()` | Chave de 44 dígitos |
+| `pageCount()` | Páginas geradas (inclui vias) |
+| `paperSize()` | Papel usado |
+| `warnings()` | Avisos de layout (`SDK-LAYOUT-*`) |
+| `metadata()` | `modal`, `tpAmb`, `tpEmis`, `copies`, `xmlSha256`, … |
+
+O host **não** monta layout fiscal: só persiste e entrega o que o SDK devolveu.
+
+## Extrair campos (sem PDF)
+
+Útil para auditoria, indexação ou pré-checagem sem renderizar.
+
+```php
+use Suot\Fiscal\Cte\Dacte\Exception\DacteXmlException;
+
+try {
+    $extract = $cte->renderDacte()
+        ->fromXml($procCteXml)
+        ->extract();
+} catch (DacteXmlException $e) {
+    // Host: XML não parseável; não indexar
+    throw $e;
+}
+
+// Host: persistir ou inspecionar FieldMap
+$chave = $extract->accessKey();
+$campos = $extract->fields(); // array serializável (emitente, partes, carga, …)
+$hash = $extract->xmlSha256();
+```
+
+## Validar se dá para imprimir
+
+Relatório de ausências/inconsistências **sem** falhar o parse no primeiro erro. Use antes de enfileirar impressão em massa.
+
+```php
+$report = $cte->renderDacte()
+    ->fromXml($procCteXml)
+    ->validatePrintable();
+
+if ($report->isPrintable()) {
+    // Host: pode chamar ->handle() e persistir o PDF
+}
+
+if (! $report->isPrintable()) {
+    foreach ($report->errors() as $issue) {
+        // Host: corrigir issue.field / issue.code (SDK-XML-*, SDK-QR-*, …)
+    }
+}
+
+foreach ($report->warnings() as $issue) {
+    // Host: opcional (ex.: protocolo ausente em tpEmis=1, RNTRC ausente no rodoviário)
+}
+```
+
+| Método | Uso |
+|---|---|
+| `isPrintable()` | Sem issues de severidade `error` |
+| `errors()` / `warnings()` | Subconjuntos de `issues()` |
+| `accessKey()` | Nullable se o parse falhou cedo |
+| `xmlSha256()` | Hash do XML de entrada |
+| `toArray()` | Payload serializável do relatório |
+
+## Opções comuns
+
+Encadeie no mesmo draft antes de `handle()` / `extract()` / `validatePrintable()`:
+
+| Método | Efeito |
+|---|---|
+| `paperSize(PaperSize::A4)` | Tamanho do papel (não vem do XML) |
+| `orientation(...)` | Retrato/paisagem; `Auto` segue `tpImp` |
+| `strictQrCode(false)` | Afrouxa validação do QR no parse (default: estrito no render) |
+| `emitterLogoFromFile($path)` | Logo do emitente (overlay) |
+| `protocolOverride($nProt, $dhRecbto)` | Só quando o host injeta protocolo explicitamente |
+| `receiptStub(true)` | Canhoto opcional |
+| `copies(2)` | Vias; FS-DA exige no mínimo 2 (ajuste automático com warning) |
+| `watermark($texto)` / `externalAreaText($texto)` | Overlays controlados |
+
+<Note>
+`verifyXmlSignature(true)` existe na API, mas a verificação XMLDSig **ainda não está ligada** no handler. Não conte com ela para integridade do XML. Default: `false`.
+</Note>
+
+## Cobertura atual
+
+- Modais 57: rodoviário, aéreo, aquaviário, ferroviário, dutoviário, multimodal
+- Contingência visual: FS-DA, EPEC, SVC (código adicional FS-DA, vias, QR/`sign`)
+- Homologação: faixa quando `tpAmb=2`
+- Multi-página: documentos originários / observações longas
+
+Fora deste pacote: DAMDFE, DABPE, DACTE de CT-e OS.
+
+## Próximos passos
+
+- Obter o XML protocolado: [Download procCTe](/fiscal/cte/consultas/download-proc)
+- Jornada CT-e: [Visão geral](/fiscal/cte)
+- Trilha: [Avaliar o SDK](/fiscal/avaliar)

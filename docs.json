@@ -88,6 +88,7 @@
               "fiscal/cte/emissao",
               "fiscal/cte/resultados",
               "fiscal/cte/contingencia",
+              "fiscal/cte/dacte",
               {
                 "group": "CT-e Simplificado",
                 "pages": [
